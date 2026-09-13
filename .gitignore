@@ -1,0 +1,11 @@
+# Composer
+/vendor/
+composer.phar
+
+# Secretos y entorno
+.env
+/storage/
+
+# Sistema
+*.log
+Thumbs.db
