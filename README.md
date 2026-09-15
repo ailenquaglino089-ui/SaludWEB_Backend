@@ -6,8 +6,8 @@ Capa de API y lógica de acceso a datos para el proyecto **SaludWEB** (Programac
 - controllers/
 - services/
 - persistence/
-- core/ (Router, Response, JwtService, AuthMiddleware, Secret)
-- vendor/ (firebase/php-jwt - Composer)
+- core/ (Router, Response, JwtService, AuthMiddleware, Config, Secret)
+- vendor/ (firebase/php-jwt - instalado con Composer)
 - db.php
 - index.php
 - routes.php
@@ -17,17 +17,55 @@ Capa de API y lógica de acceso a datos para el proyecto **SaludWEB** (Programac
 - Mantener la lógica de negocio y persistencia separada.
 - Autenticación JWT (HS256) con rutas públicas, protegidas (401) y solo-admin (403).
 
-## Setup rápido
-```bash
-# Instalar dependencias (solo la primera vez)
-php composer.phar install
+## Puesta en marcha
 
-# Verificar la API
-curl http://localhost/Workspace_SaludWEB/repositorio_backend/api/health
+### Requisitos
+- PHP 8.x
+- Composer
+- MySQL corriendo (en XAMPP: iniciar el módulo `MySQL` desde el Control Panel)
+
+### 1. Clonar el repositorio
+```bash
+git clone https://github.com/ailenquaglino089-ui/SaludWEB_Backend.git
+cd SaludWEB_Backend
 ```
+
+### 2. Instalar dependencias
+```bash
+composer install
+```
+
+Si Composer no está instalado globalmente, descargá `composer.phar` dentro de la carpeta del proyecto y ejecutá:
+
+```bash
+php composer.phar install
+```
+
+### 3. Configurar entorno (opcional)
+Copia `.env.example` a `.env` y ajustá los valores según corresponda (base de datos, `JWT_SECRET`, `CORS_ORIGINS`). En desarrollo, si no se configura nada, se usan los valores por defecto de `db.php` y `core/Secret.php`.
+
+### 4. Correr el backend
+
+**Opción A: servidor de desarrollo de PHP**
+```bash
+php -S localhost:8000 index.php
+```
+
+**Opción B: Apache/XAMPP**
+Copiá la carpeta dentro de `htdocs` (ej: `C:\xampp\htdocs\SaludWEB_Backend`) y abrí la URL correspondiente:
+```
+http://localhost/SaludWEB_Backend/api/health
+```
+
+### 5. Verificar
+```bash
+curl http://localhost:8000/api/health
+```
+Debe responder `200` con `{"data":{"status":"ok",...},"message":"API SaludWEB - Programación IV"}`.
+
+> En el primer request, `db.php` crea automáticamente la base de datos `pacientes`, las tablas y los datos de ejemplo (no hace falta importar ningún SQL).
 
 ## Autenticación
 1. `POST /api/auth/login` con `{ "email": "...", "password": "..." }` → devuelve un JWT.
 2. Enviarlo en cada petición protegida: `Authorization: Bearer <jwt>`.
 3. El secreto se toma de la variable de entorno `JWT_SECRET` o se genera en `storage/secret.key`.
-4. Detalles en [`../API_DOCUMENTATION.md`](../API_DOCUMENTATION.md).
