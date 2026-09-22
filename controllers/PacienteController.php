@@ -17,13 +17,18 @@ class PacienteController
     }
 
     /**
-     * GET /api/pacientes - Listar todos los pacientes
+     * GET /api/pacientes - Listar pacientes paginado
+     * Query params opcionales: pagina (por defecto 1), por_pagina (por defecto 10), q (búsqueda)
      */
     // Método que atiende la petición GET /api/pacientes
     public function index(): void
     {
-        // Delega en el servicio y responde 200 OK con JSON consistente
-        Response::ok($this->service->obtenerTodos());
+        // Lee los parámetros de paginación del query string (?pagina=2&por_pagina=10&q=...)
+        $pagina = (int)($_GET['pagina'] ?? 1);          // Página a mostrar
+        $porPagina = (int)($_GET['por_pagina'] ?? 10);  // Cantidad de items por página
+        $busqueda = trim((string)($_GET['q'] ?? ''));   // Texto de búsqueda (opcional)
+        // Delega en el servicio (que valida/acota los parámetros) y responde 200 OK
+        Response::ok($this->service->obtenerPaginado($pagina, $porPagina, $busqueda));
     }
 
     /**

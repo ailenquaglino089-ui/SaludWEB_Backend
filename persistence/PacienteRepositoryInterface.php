@@ -9,6 +9,11 @@ interface PacienteRepositoryInterface
 {
     // Obtiene todos los pacientes: devuelve un array
     public function obtenerTodos(): array;
+    // Obtiene una página de pacientes (paginado): recibe offset (desde qué fila),
+    // cantidad por página y un texto de búsqueda opcional; devuelve el array de la página
+    public function obtenerPaginado(int $offset, int $porPagina, string $busqueda = ''): array;
+    // Cuenta el total de pacientes (respetando la búsqueda): devuelve un entero
+    public function contar(string $busqueda = ''): int;
     // Obtiene un paciente por su id: array si existe o null si no (retorno nullable)
     public function obtenerPorId(int $id): ?array;
     // Obtiene un paciente por su dni: array si existe o null si no

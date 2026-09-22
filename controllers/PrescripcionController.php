@@ -17,13 +17,20 @@ class PrescripcionController
     }
 
     /**
-     * GET /api/prescripciones - Listar todas las prescripciones
+     * GET /api/prescripciones - Listar prescripciones paginado
+     * Query params opcionales: pagina (por defecto 1), por_pagina (por defecto 10),
+     * q (búsqueda) y estado (filtro por estado)
      */
     // Método que atiende la petición GET /api/prescripciones
     public function index(): void
     {
-        // Delega en el servicio y responde 200 OK con JSON consistente
-        Response::ok($this->service->obtenerTodas());
+        // Lee los parámetros de paginación y filtros del query string
+        $pagina = (int)($_GET['pagina'] ?? 1);          // Página a mostrar
+        $porPagina = (int)($_GET['por_pagina'] ?? 10);  // Cantidad de items por página
+        $busqueda = trim((string)($_GET['q'] ?? ''));   // Texto de búsqueda (opcional)
+        $estado = trim((string)($_GET['estado'] ?? ''));// Filtro por estado (opcional)
+        // Delega en el servicio (que valida/acota los parámetros) y responde 200 OK
+        Response::ok($this->service->obtenerPaginadas($pagina, $porPagina, $busqueda, $estado));
     }
 
     /**
