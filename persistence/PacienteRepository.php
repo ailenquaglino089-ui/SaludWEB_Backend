@@ -43,6 +43,78 @@ class PacienteRepository implements PacienteRepositoryInterface
     }
 
     /**
+     * Obtiene una página de pacientes (paginado)
+     * Evita traer TODOS los pacientes cuando la tabla crece mucho: solo trae
+     * los registros de la página solicitada (LIMIT ... OFFSET ...).
+     * Opcionalmente filtra por texto (nombre, DNI u obra social) con LIKE.
+     * @param int $offset Desde qué fila empezar ((página - 1) * por_página)
+     * @param int $porPagina Cuántos pacientes trae la página
+     * @param string $busqueda Texto de búsqueda opcional
+     * @return array Arreglo con los pacientes de la página
+     */
+    public function obtenerPaginado(int $offset, int $porPagina, string $busqueda = ''): array
+    {
+        // SELECT base: mismas columnas que obtenerTodos() (paciente + nombre de obra social)
+        $sql = "SELECT pac.*, os.nombre_obra as obra_social
+                FROM pacientes pac
+                LEFT JOIN obras_sociales os ON pac.id_obra_social = os.id";
+        // Arreglo de parámetros que se bindean en orden (evita inyección SQL)
+        $parametros = [];
+
+        // Si hay texto de búsqueda, se filtra con LIKE (coincidencia parcial en nombre, DNI u obra social)
+        if ($busqueda !== '') {
+            $sql .= " WHERE pac.nombre LIKE ? OR pac.dni LIKE ? OR os.nombre_obra LIKE ?";
+            $parametros = ["%$busqueda%", "%$busqueda%", "%$busqueda%"];
+        }
+
+        // Orden (igual que obtenerTodos) + LIMIT/OFFSET para recortar la página
+        $sql .= " ORDER BY pac.activo DESC, pac.nombre ASC LIMIT ? OFFSET ?";
+
+        // Consulta preparada: todos los valores van por parámetros (?), sin concatenar SQL
+        $stmt = $this->pdo->prepare($sql);
+        $i = 1;
+        // Primero se bindean los LIKE de la búsqueda (si los hay) como texto
+        foreach ($parametros as $parametro) {
+            $stmt->bindValue($i++, $parametro);
+        }
+        // LIMIT y OFFSET se bindean como enteros (MySQL los exige con tipo explícito)
+        $stmt->bindValue($i++, $porPagina, PDO::PARAM_INT);
+        $stmt->bindValue($i++, $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        // Devuelve solo las filas de la página solicitada
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Cuenta el total de pacientes (respetando la búsqueda)
+     * Se usa junto con obtenerPaginado() para conocer cuántas páginas hay.
+     * COUNT(*) es barato: solo devuelve un número, no filas completas.
+     * @param string $busqueda Texto de búsqueda opcional
+     * @return int Total de pacientes
+     */
+    public function contar(string $busqueda = ''): int
+    {
+        // COUNT(*) cuenta las filas; LEFT JOIN para poder filtrar también por obra social
+        $sql = "SELECT COUNT(*) FROM pacientes pac
+                LEFT JOIN obras_sociales os ON pac.id_obra_social = os.id";
+
+        // Si hay búsqueda, se agrega el mismo filtro LIKE que en obtenerPaginado()
+        if ($busqueda !== '') {
+            $sql .= " WHERE pac.nombre LIKE ? OR pac.dni LIKE ? OR os.nombre_obra LIKE ?";
+            $stmt = $this->pdo->prepare($sql);
+            $like = "%$busqueda%";  // El patrón LIKE se arma una sola vez y se reutiliza
+            $stmt->execute([$like, $like, $like]);
+        } else {
+            // Sin búsqueda: query() directo (no tiene parámetros, sin riesgo de inyección)
+            $stmt = $this->pdo->query($sql);
+        }
+
+        // fetchColumn() devuelve el número; (int) lo garantiza como entero
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
      * Obtiene un paciente por su ID
      * @param int $id ID del paciente
      * @return array|null Datos del paciente o null

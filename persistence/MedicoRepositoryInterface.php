@@ -11,6 +11,11 @@ interface MedicoRepositoryInterface
 {
     // Obtiene todos los médicos: devuelve un array (lista de médicos)
     public function obtenerTodos(): array;
+    // Obtiene una página de médicos (paginado): recibe offset, cantidad por página
+    // y texto de búsqueda opcional; devuelve el array de la página actual
+    public function obtenerPaginado(int $offset, int $porPagina, string $busqueda = ''): array;
+    // Cuenta el total de médicos (respetando la búsqueda): devuelve un entero
+    public function contar(string $busqueda = ''): int;
     // Obtiene un médico por su id: devuelve array o null si no existe (devolución nullable)
     public function obtenerPorId(int $id): ?array;
     // Crea un médico con los datos recibidos: devuelve el ID del nuevo registro

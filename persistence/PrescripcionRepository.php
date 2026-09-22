@@ -48,6 +48,108 @@ class PrescripcionRepository implements PrescripcionRepositoryInterface
     }
 
     /**
+     * Obtiene una página de prescripciones (paginado)
+     * Evita traer TODAS las prescripciones cuando la tabla es grande:
+     * trae solo la página solicitada con LIMIT ... OFFSET ... (performance).
+     * Puede filtrar por texto (medicamentos, paciente o médico) y por estado.
+     * @param int $offset Desde qué fila empezar ((página - 1) * por_página)
+     * @param int $porPagina Cuántas prescripciones trae la página
+     * @param string $busqueda Texto de búsqueda opcional
+     * @param string $estado Filtro por estado opcional (activa, vencida, etc.)
+     * @return array Arreglo con las prescripciones de la página
+     */
+    public function obtenerPaginadas(int $offset, int $porPagina, string $busqueda = '', string $estado = ''): array
+    {
+        // SELECT base con JOIN para enriquecer con nombres de paciente y médico
+        $sql = "SELECT p.*, 
+                       pac.nombre as nombre_paciente, 
+                       med.nombre as nombre_medico 
+                FROM prescripciones p
+                LEFT JOIN pacientes pac ON p.id_paciente = pac.id
+                LEFT JOIN medicos med ON p.id_medico = med.id";
+        // Condiciones WHERE que se acumulan dinámicamente según los filtros
+        $where = [];
+        // Parámetros que se bindean después en orden (protección anti inyección SQL)
+        $parametros = [];
+
+        // Filtro por texto: LIKE en el JSON de medicamentos, paciente o médico
+        if ($busqueda !== '') {
+            $where[] = "(pac.nombre LIKE ? OR med.nombre LIKE ? OR p.medicamentos LIKE ?)";
+            $parametros[] = "%$busqueda%";
+            $parametros[] = "%$busqueda%";
+            $parametros[] = "%$busqueda%";
+        }
+        // Filtro por estado exacto (si viene, ej: "activa")
+        if ($estado !== '') {
+            $where[] = "p.estado = ?";
+            $parametros[] = $estado;
+        }
+
+        // Si hay filtros se agregan al SQL unidos con AND
+        if (!empty($where)) {
+            $sql .= " WHERE " . implode(' AND ', $where);
+        }
+
+        // Orden (igual que obtenerTodas) + LIMIT/OFFSET para recortar la página
+        $sql .= " ORDER BY p.fecha_emision DESC LIMIT ? OFFSET ?";
+
+        // Consulta preparada: ningún valor se concatena al SQL, todos van por ?
+        $stmt = $this->pdo->prepare($sql);
+        $i = 1;
+        // Se bindean primero los parámetros de búsqueda/estado (como texto)
+        foreach ($parametros as $parametro) {
+            $stmt->bindValue($i++, $parametro);
+        }
+        // LIMIT y OFFSET con tipo entero explícito (requerido por MySQL nativo)
+        $stmt->bindValue($i++, $porPagina, PDO::PARAM_INT);
+        $stmt->bindValue($i++, $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        // Devuelve solo las prescripciones de la página, con medicamentos decodificados
+        return array_map([$this, 'formatearFila'], $stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /**
+     * Cuenta el total de prescripciones (respetando búsqueda y estado)
+     * Se usa junto a obtenerPaginadas() para calcular las páginas del listado.
+     * @param string $busqueda Texto de búsqueda opcional
+     * @param string $estado Filtro por estado opcional
+     * @return int Total de prescripciones
+     */
+    public function contar(string $busqueda = '', string $estado = ''): int
+    {
+        // COUNT(*) es barato: devuelve solo un número, no las filas completas
+        $sql = "SELECT COUNT(*) FROM prescripciones p
+                LEFT JOIN pacientes pac ON p.id_paciente = pac.id
+                LEFT JOIN medicos med ON p.id_medico = med.id";
+        // Condiciones WHERE y parámetros (iguales a los de obtenerPaginadas)
+        $where = [];
+        $parametros = [];
+
+        if ($busqueda !== '') {
+            $where[] = "(pac.nombre LIKE ? OR med.nombre LIKE ? OR p.medicamentos LIKE ?)";
+            $like = "%$busqueda%";  // Patrón LIKE único reutilizado en los tres campos
+            $parametros = [$like, $like, $like];
+        }
+        if ($estado !== '') {
+            $where[] = "p.estado = ?";
+            $parametros[] = $estado;
+        }
+
+        if (!empty($where)) {
+            $sql .= " WHERE " . implode(' AND ', $where);
+        }
+
+        // Consulta preparada (o directa si no hay filtros) y devolución del conteo
+        $stmt = empty($parametros) ? $this->pdo->query($sql) : $this->pdo->prepare($sql);
+        if (!empty($parametros)) {
+            $stmt->execute($parametros);
+        }
+        // fetchColumn() devuelve el número; (int) lo garantiza como entero
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
      * Obtiene las prescripciones de un paciente específico
      * @param int $id_paciente ID del paciente
      * @return array Arreglo de prescripciones

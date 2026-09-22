@@ -31,6 +31,52 @@ class PrescripcionService
     }
 
     /**
+     * Obtiene una página de prescripciones (paginado)
+     * Regla de paginado: nunca se trae toda la tabla, solo la página pedida.
+     * Valida y acota los parámetros (página >= 1, por_página entre 1 y 100).
+     * @param int $pagina Número de página (empieza en 1)
+     * @param int $porPagina Cantidad de items por página
+     * @param string $busqueda Texto de búsqueda (medicamentos, paciente o médico)
+     * @param string $estado Filtro por estado opcional
+     * @return array Estructura paginada: { items, total, pagina, por_pagina, total_paginas }
+     */
+    public function obtenerPaginadas(int $pagina = 1, int $porPagina = 10, string $busqueda = '', string $estado = ''): array
+    {
+        // Sanitiza y acota la búsqueda (anti-XSS + espacios; el LIKE se arma en el repo)
+        $busqueda = strip_tags(trim($busqueda));
+        // El estado solo se filtra si es un texto no vacío (ya viene validado por whitelist en UI)
+        $estado = trim($estado);
+        // Normaliza los parámetros numéricos para evitar valores inválidos
+        $pagina = max(1, (int)$pagina);                     // La página mínima es 1
+        $porPagina = max(1, min(100, (int)$porPagina));     // Entre 1 y 100 items por página
+
+        // Total de registros que coinciden (necesario para calcular las páginas)
+        $total = $this->repo->contar($busqueda, $estado);
+        // ceil() redondea hacia arriba: 57 registros con 10 x página = 6 páginas
+        $totalPaginas = (int) ceil($total / $porPagina);
+
+        // Si la página pedida supera el total, se acota a la última (evita páginas vacías)
+        if ($pagina > $totalPaginas && $totalPaginas > 0) {
+            $pagina = $totalPaginas;
+        }
+
+        // OFFSET = cuántas filas saltar: página 1 -> 0, página 2 -> porPagina, etc.
+        $offset = ($pagina - 1) * $porPagina;
+
+        // Pide al repositorio solo los registros de esta página
+        $items = $this->repo->obtenerPaginadas($offset, $porPagina, $busqueda, $estado);
+
+        // Devuelve la estructura paginada completa para que el frontend dibuje los controles
+        return [
+            'items' => $items,
+            'total' => $total,
+            'pagina' => $pagina,
+            'por_pagina' => $porPagina,
+            'total_paginas' => $totalPaginas,
+        ];
+    }
+
+    /**
      * Obtiene las prescripciones de un paciente
      * @param int $id_paciente ID del paciente
      * @return array Prescripciones del paciente

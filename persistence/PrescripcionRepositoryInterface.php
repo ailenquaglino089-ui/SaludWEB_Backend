@@ -9,6 +9,11 @@ interface PrescripcionRepositoryInterface
 {
     // Devuelve todas las prescripciones (array)
     public function obtenerTodas(): array;
+    // Devuelve una página de prescripciones (paginado): recibe offset, cantidad por página,
+    // texto de búsqueda opcional y filtro de estado opcional; devuelve el array de la página
+    public function obtenerPaginadas(int $offset, int $porPagina, string $busqueda = '', string $estado = ''): array;
+    // Cuenta el total de prescripciones (respetando búsqueda y estado): devuelve un entero
+    public function contar(string $busqueda = '', string $estado = ''): int;
     // Devuelve las prescripciones de un paciente específico (array; id_paciente entero)
     public function obtenerPorPaciente(int $id_paciente): array;
     // Devuelve una prescripción por id: array si existe o null si no

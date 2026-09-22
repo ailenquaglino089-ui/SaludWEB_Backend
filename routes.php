@@ -225,19 +225,27 @@ $router->post('/api/auth/cambiar-contrasena', function () use ($authService, $au
     $controller->cambiarContrasena();
 });
 
-// POST /api/medicos - Crear médico (protegida)
+// POST /api/medicos - Crear médico (SOLO ADMIN → 403 si no)
+// Regla de negocio: la gestión del catálogo de médicos es administrativa.
+// Un paciente (o médico) no tiene permitido crear médicos.
 $router->post('/api/medicos', function () use ($medicoService, $authMiddleware) {
     // Exige token JWT válido antes de permitir la creación (ruta protegida)
-    $authMiddleware->verificarToken();
+    $payload = $authMiddleware->verificarToken();
+    // requireRol() comprueba que el rol del payload sea 'admin'; si no lo es responde 403 Forbidden
+    $authMiddleware->requireRol($payload, ['admin']);
     $controller = new MedicoController($medicoService);
     // store() toma los datos del body JSON, valida y persiste el nuevo médico
     $controller->store();
 });
 
-// PUT/PATCH /api/medicos/{id} - Actualizar médico (protegida)
+// PUT/PATCH /api/medicos/{id} - Actualizar médico (SOLO ADMIN → 403 si no)
+// Regla de negocio: la gestión del catálogo de médicos es administrativa.
+// Un paciente (o médico) no tiene permitido editar médicos.
 $router->put('/api/medicos/{id}', function ($id) use ($medicoService, $authMiddleware) {
     // Autentica al usuario antes de permitir la modificación
-    $authMiddleware->verificarToken();
+    $payload = $authMiddleware->verificarToken();
+    // requireRol() comprueba que el rol del payload sea 'admin'; si no lo es responde 403 Forbidden
+    $authMiddleware->requireRol($payload, ['admin']);
     $controller = new MedicoController($medicoService);
     // update() actualiza el médico con el id recibido; ($id viene como string, (int) lo convierte)
     $controller->update((int) $id);
@@ -246,7 +254,9 @@ $router->put('/api/medicos/{id}', function ($id) use ($medicoService, $authMiddl
 // PATCH también permite actualizar parcialmente el médico (misma lógica que PUT)
 $router->patch('/api/medicos/{id}', function ($id) use ($medicoService, $authMiddleware) {
     // Verificación de token obligatoria para rutas protegidas
-    $authMiddleware->verificarToken();
+    $payload = $authMiddleware->verificarToken();
+    // Misma regla de negocio que PUT: solo admin puede editar médicos
+    $authMiddleware->requireRol($payload, ['admin']);
     $controller = new MedicoController($medicoService);
     $controller->update((int) $id);
 });
@@ -347,10 +357,14 @@ $router->get('/api/prescripciones/{id}', function ($id) use ($prescripcionServic
     }
 });
 
-// POST /api/prescripciones - Crear prescripción (protegida)
+// POST /api/prescripciones - Crear prescripción (SOLO MÉDICO → 403 si no)
+// Regla de negocio: "Las prescripciones sólo pueden ser hechas por Médicos".
+// Ni un paciente ni un admin pueden recetar; el backend valida el rol.
 $router->post('/api/prescripciones', function () use ($prescripcionService, $authMiddleware) {
     // Solo usuarios autenticados pueden generar una prescripción
-    $authMiddleware->verificarToken();
+    $payload = $authMiddleware->verificarToken();
+    // requireRol() comprueba que el rol sea 'medico'; si no, responde 403 Forbidden
+    $authMiddleware->requireRol($payload, ['medico']);
     try {
         $controller = new PrescripcionController($prescripcionService);
         // store() valida y guarda la nueva prescripción (medicamentos como JSON)
@@ -361,10 +375,13 @@ $router->post('/api/prescripciones', function () use ($prescripcionService, $aut
     }
 });
 
-// PUT/PATCH /api/prescripciones/{id} - Actualizar prescripción (protegida)
+// PUT/PATCH /api/prescripciones/{id} - Actualizar prescripción (SOLO MÉDICO → 403 si no)
+// Regla de negocio: editar una prescripción (dato clínico) requiere rol médico.
 $router->put('/api/prescripciones/{id}', function ($id) use ($prescripcionService, $authMiddleware) {
     // Autenticación requerida para editar el dato clínico
-    $authMiddleware->verificarToken();
+    $payload = $authMiddleware->verificarToken();
+    // Se exige rol 'medico'; de lo contrario el middleware responde 403 Forbidden
+    $authMiddleware->requireRol($payload, ['medico']);
     try {
         $controller = new PrescripcionController($prescripcionService);
         // update() modifica los campos enviados de la prescripción indicada
@@ -378,7 +395,9 @@ $router->put('/api/prescripciones/{id}', function ($id) use ($prescripcionServic
 // PATCH: actualización parcial de prescripción
 $router->patch('/api/prescripciones/{id}', function ($id) use ($prescripcionService, $authMiddleware) {
     // Verificación de token
-    $authMiddleware->verificarToken();
+    $payload = $authMiddleware->verificarToken();
+    // Misma regla de negocio que PUT: solo médico edita prescripciones
+    $authMiddleware->requireRol($payload, ['medico']);
     try {
         $controller = new PrescripcionController($prescripcionService);
         $controller->update((int) $id);

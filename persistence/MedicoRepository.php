@@ -56,6 +56,76 @@ class MedicoRepository implements MedicoRepositoryInterface
     }
 
     /**
+     * Obtiene una página de médicos (paginado)
+     * Evita traer TODOS los médicos en un solo request cuando hay muchos:
+     * trae solo la página solicitada con LIMIT ... OFFSET ... (performance).
+     * Puede filtrar por texto (nombre, matrícula o especialidad) con LIKE.
+     *
+     * @param int $offset Desde qué fila empezar ((página - 1) * por_página)
+     * @param int $porPagina Cuántos médicos trae la página
+     * @param string $busqueda Texto de búsqueda opcional
+     * @return array Arreglo con los médicos de la página
+     */
+    public function obtenerPaginado(int $offset, int $porPagina, string $busqueda = ''): array
+    {
+        // SELECT base con todas las columnas de medicos
+        $sql = "SELECT * FROM medicos";
+        // Parámetros que se bindean después en orden (protección anti inyección SQL)
+        $parametros = [];
+
+        // Si hay texto de búsqueda, se filtra con LIKE en nombre, matrícula o especialidad
+        if ($busqueda !== '') {
+            $sql .= " WHERE nombre LIKE ? OR matricula LIKE ? OR especialidad LIKE ?";
+            $parametros = ["%$busqueda%", "%$busqueda%", "%$busqueda%"];
+        }
+
+        // Orden (igual que obtenerTodos) + LIMIT/OFFSET para recortar la página
+        $sql .= " ORDER BY activo DESC, nombre ASC LIMIT ? OFFSET ?";
+
+        // Consulta preparada: ningún valor se concatena al SQL, todos van por ?
+        $stmt = $this->pdo->prepare($sql);
+        $i = 1;
+        // Se bindean primero los LIKE de la búsqueda (como texto)
+        foreach ($parametros as $parametro) {
+            $stmt->bindValue($i++, $parametro);
+        }
+        // LIMIT y OFFSET con tipo entero explícito (requerido por MySQL nativo)
+        $stmt->bindValue($i++, $porPagina, PDO::PARAM_INT);
+        $stmt->bindValue($i++, $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        // Devuelve solo los médicos de la página
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Cuenta el total de médicos (respetando la búsqueda)
+     * Se usa junto a obtenerPaginado() para calcular las páginas del listado.
+     *
+     * @param string $busqueda Texto de búsqueda opcional
+     * @return int Total de médicos
+     */
+    public function contar(string $busqueda = ''): int
+    {
+        // COUNT(*) devuelve un número, no las filas completas: es barato y rápido
+        $sql = "SELECT COUNT(*) FROM medicos";
+
+        // Si hay búsqueda, se agrega el mismo filtro LIKE que en obtenerPaginado()
+        if ($busqueda !== '') {
+            $sql .= " WHERE nombre LIKE ? OR matricula LIKE ? OR especialidad LIKE ?";
+            $stmt = $this->pdo->prepare($sql);
+            $like = "%$busqueda%";  // Patrón LIKE único reutilizado en los tres campos
+            $stmt->execute([$like, $like, $like]);
+        } else {
+            // Sin búsqueda: query() directo (no tiene parámetros, sin riesgo de inyección)
+            $stmt = $this->pdo->query($sql);
+        }
+
+        // fetchColumn() devuelve el número; (int) lo garantiza como entero
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
      * Obtiene un médico por su ID
      * 
      * @param int $id Identificador único del médico
