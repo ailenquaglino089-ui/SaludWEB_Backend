@@ -357,10 +357,14 @@ $router->get('/api/prescripciones/{id}', function ($id) use ($prescripcionServic
     }
 });
 
-// POST /api/prescripciones - Crear prescripción (protegida)
+// POST /api/prescripciones - Crear prescripción (SOLO MÉDICO/ADMIN → 403 si no)
+// Regla de negocio: "Las prescripciones sólo pueden ser hechas por Médicos".
+// Un paciente no puede recetar (ni a sí mismo); el backend valida el rol.
 $router->post('/api/prescripciones', function () use ($prescripcionService, $authMiddleware) {
     // Solo usuarios autenticados pueden generar una prescripción
-    $authMiddleware->verificarToken();
+    $payload = $authMiddleware->verificarToken();
+    // requireRol() comprueba que el rol sea 'medico' o 'admin'; si no, responde 403 Forbidden
+    $authMiddleware->requireRol($payload, ['medico', 'admin']);
     try {
         $controller = new PrescripcionController($prescripcionService);
         // store() valida y guarda la nueva prescripción (medicamentos como JSON)
@@ -371,10 +375,13 @@ $router->post('/api/prescripciones', function () use ($prescripcionService, $aut
     }
 });
 
-// PUT/PATCH /api/prescripciones/{id} - Actualizar prescripción (protegida)
+// PUT/PATCH /api/prescripciones/{id} - Actualizar prescripción (SOLO MÉDICO/ADMIN → 403 si no)
+// Regla de negocio: editar una prescripción (dato clínico) requiere rol médico o admin.
 $router->put('/api/prescripciones/{id}', function ($id) use ($prescripcionService, $authMiddleware) {
     // Autenticación requerida para editar el dato clínico
-    $authMiddleware->verificarToken();
+    $payload = $authMiddleware->verificarToken();
+    // Se exige rol 'medico' o 'admin'; de lo contrario el middleware responde 403 Forbidden
+    $authMiddleware->requireRol($payload, ['medico', 'admin']);
     try {
         $controller = new PrescripcionController($prescripcionService);
         // update() modifica los campos enviados de la prescripción indicada
@@ -388,7 +395,9 @@ $router->put('/api/prescripciones/{id}', function ($id) use ($prescripcionServic
 // PATCH: actualización parcial de prescripción
 $router->patch('/api/prescripciones/{id}', function ($id) use ($prescripcionService, $authMiddleware) {
     // Verificación de token
-    $authMiddleware->verificarToken();
+    $payload = $authMiddleware->verificarToken();
+    // Misma regla de negocio que PUT: solo médico o admin editan prescripciones
+    $authMiddleware->requireRol($payload, ['medico', 'admin']);
     try {
         $controller = new PrescripcionController($prescripcionService);
         $controller->update((int) $id);
