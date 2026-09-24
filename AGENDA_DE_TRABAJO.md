@@ -10,7 +10,7 @@
 | **Última actualización** | 24/09/2026 |
 
 > Las fechas son propuestas y ajustables. Se marca el avance real hasta hoy.
-> 24/09/2026: Fase E avanzada — guía **"Adaptar el sistema a mobile"** aplicada en `SaludWEB_Mobile` (commit `3fe974a`).
+> 24/09/2026: Fase E avanzada — guía **"Adaptar el sistema a mobile"** aplicada en `SaludWEB_Mobile` (commit `3fe974a`) y **CRUD completo** (alta/edición/baja) implementado en la app mobile.
 
 ---
 
@@ -70,6 +70,7 @@ profesor y quede registro del estado de cada tarea.
 | E1 | Revisión del estado actual de `SaludWEB_Mobile` (auditoría según guía) | Equipo | 23/09/2026 | 24/09/2026 | ✔ Completado |
 | E2 | Aplicación de la guía "Adaptar el sistema a mobile": login onBlur + mostrar/ocultar contraseña, Bottom Navigation Bar sticky, targets táctiles 44px, tipografía 16px, contraste WCAG AA y rendimiento FlatList | Equipo | 24/09/2026 | 24/09/2026 | ✔ Completado |
 | E3 | Pruebas en emulador / dispositivo | Equipo | 05/10/2026 | 06/10/2026 | ⏳ Pendiente |
+| E4 | CRUD completo en mobile: formularios de alta/edición con pie fijo de Confirmar/Cancelar, confirmación de borrado, cambio de estado de prescripciones y gating por rol (mismas reglas que `routes.php`) | Equipo | 24/09/2026 | 24/09/2026 | ✔ Completado |
 
 ### Fase F — Integración, pruebas finales y entrega
 
@@ -91,6 +92,7 @@ profesor y quede registro del estado de cada tarea.
 | Guía CRUD + paginado + regla "solo médicos recetan" | 22/09/2026 ✔ |
 | Project Brief y Agenda de Trabajo | 22/09/2026 ✔ |
 | Guía "Adaptar el sistema a mobile" aplicada en `SaludWEB_Mobile` | 24/09/2026 ✔ |
+| CRUD completo (alta/edición/baja) en `SaludWEB_Mobile` | 24/09/2026 ✔ |
 | Aplicación Mobile funcional | 06/10/2026 |
 | Pruebas integrales finalizadas | 09/10/2026 |
 | Docs finales + merge a `main` | 15/10/2026 |
