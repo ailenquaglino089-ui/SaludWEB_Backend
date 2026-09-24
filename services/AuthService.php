@@ -2,7 +2,14 @@
 // ============================================================
 // services/AuthService.php - Servicio de Autenticación
 // ============================================================
-// Maneja lógica de login, registro y validación de credenciales
+// Maneja lógica de login, registro y validación de credenciales.
+// También valida el login SSO (Google / Microsoft): verifica el
+// id_token contra las claves públicas del proveedor y emite el JWT
+// propio de SaludWEB (misma firma que el login por contraseña).
+// Librería firebase/php-jwt: firma/verifica JWT y convierte JWKS.
+use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
+use Firebase\JWT\JWK;
 
 // Clase del servicio de autenticación: contiene la lógica de negocio del módulo de accesos
 class AuthService
@@ -168,8 +175,60 @@ class AuthService
         // Delega en el servicio JWT la generación del token firmado
         $emitido = $this->jwt->generar($usuario);
 
-        // Devolver usuario sin contraseña + token JWT
-        // Construye el array de respuesta: datos del usuario + token y su vencimiento en formato ISO 8601
+// Devolver usuario sin contraseña + token JWT
+    // Construye el array de respuesta: datos del usuario + token y su vencimiento en formato ISO 8601
+    return [
+        'id' => (int) $usuario['id'],
+        'email' => $usuario['email'],
+        'nombre' => $usuario['nombre'],
+        'tipo_usuario' => $usuario['tipo_usuario'],
+        'token' => $emitido['token'],
+        'expires_at' => date('c', $emitido['expires_at']),
+    ];
+    }
+
+    /**
+     * Login con SSO (Google / Microsoft)
+     * VALIDA la firma del id_token contra las claves públicas del proveedor,
+     * BUSCA la cuenta local por email (solo cuentas existentes y activas) y
+     * EMITE un JWT de SaludWEB (misma firma que el login por contraseña).
+     * @param string $provider 'google' | 'microsoft'
+     * @param string $idToken  JWT de identidad emitido por el proveedor
+     * @return array Datos del usuario + token JWT
+     * @throws InvalidArgumentException Si el token es inválido o no hay cuenta local
+     */
+    public function loginSso(string $provider, string $idToken): array
+    {
+        // Estructura de un JWT: header.payload.firma (exactamente dos puntos)
+        if ($idToken === '' || substr_count($idToken, '.') !== 2) {
+            throw new \InvalidArgumentException('Token de SSO inválido', 401);
+        }
+        // Valida firma y claims contra el proveedor; devuelve los claims verificados
+        $claims = $this->validarIdToken($provider, $idToken);
+        // El email es la llave que une la cuenta externa con la cuenta local de SaludWEB
+        $email = strtolower(trim($claims['email'] ?? ''));
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new \InvalidArgumentException('El proveedor no devolvió un email válido', 401);
+        }
+
+        // Buscar la cuenta local: SSO habilita SOLO cuentas existentes y activas
+        // (regla de negocio: no se auto-crean cuentas admin/medico desde afuera)
+        $stmt = $this->pdo->prepare("SELECT * FROM usuarios WHERE email = ? AND activo = 1");
+        $stmt->execute([$email]);
+        $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$usuario) {
+            throw new \InvalidArgumentException(
+                'No existe una cuenta de SaludWEB con ese email. Usá tu email y contraseña.',
+                401
+            );
+        }
+
+        // Deja la sesión PHP abierta (compatibilidad con clientes por cookies)
+        $_SESSION['usuario_id'] = $usuario['id'];
+        // Emite el JWT de SaludWEB con el MISMO servicio que el login por contraseña
+        $emitido = $this->jwt->generar($usuario);
+
+        // Respuesta idéntica a login(): el cliente se autentica con el campo "token"
         return [
             'id' => (int) $usuario['id'],
             'email' => $usuario['email'],
@@ -178,6 +237,152 @@ class AuthService
             'token' => $emitido['token'],
             'expires_at' => date('c', $emitido['expires_at']),
         ];
+    }
+
+    // Delega la validación del token al proveedor correspondiente.
+    private function validarIdToken(string $provider, string $idToken): array
+    {
+        if ($provider === 'google') {
+            // Google: certificados X.509 públicos (mapa kid => certificado PEM)
+            return $this->validarGoogle($idToken);
+        }
+        if ($provider === 'microsoft') {
+            // Microsoft Entra ID: claves públicas RSA desde el JWKS del tenant
+            return $this->validarMicrosoft($idToken);
+        }
+        throw new \InvalidArgumentException('Proveedor de SSO no soportado', 422);
+    }
+
+    // Valida un id_token de Google contra los certificados públicos de Google.
+    private function validarGoogle(string $idToken): array
+    {
+        // Client ID esperado (claim "aud"). Viene de variable de entorno;
+        // si está vacío, el SSO de Google está desactivado en el servidor.
+        $clientId = Config::get('SSO_GOOGLE_CLIENT_ID');
+        if ($clientId === '') {
+            throw new \InvalidArgumentException('SSO de Google no está configurado en el servidor', 501);
+        }
+        // Certificados públicos de Google (mapa kid => certificado X.509 en PEM)
+        $certificados = $this->httpGetJson('https://www.googleapis.com/oauth2/v1/certs');
+        if (!is_array($certificados) || empty($certificados)) {
+            throw new \RuntimeException('No se pudieron obtener las claves públicas de Google', 503);
+        }
+        // El header del token indica qué kid (clave) lo firmó
+        $header = $this->obtenerHeader($idToken);
+        $kid = $header['kid'] ?? '';
+        if ($kid === '' || !isset($certificados[$kid])) {
+            throw new \InvalidArgumentException('Token de SSO inválido', 401);
+        }
+        // Convierte el certificado X.509 a la clave pública RSA (formato PEM)
+        $publicKey = $this->certificadoPublico($certificados[$kid]);
+        if ($publicKey === '') {
+            throw new \InvalidArgumentException('Token de SSO inválido', 401);
+        }
+        // Decodifica y VERIFICA la firma, además de exp/nbf (lanza si fue manipulado o vencido)
+        $payload = (array) JWT::decode($idToken, new Key($publicKey, 'RS256'));
+        // Valida el emisor: solo tokens emitidos por Google se aceptan
+        if (!in_array($payload['iss'] ?? '', ['https://accounts.google.com', 'accounts.google.com'], true)) {
+            throw new \InvalidArgumentException('Token de SSO inválido', 401);
+        }
+        // Valida la audiencia: el token tiene que haber sido emitido PARA este client_id
+        if (($payload['aud'] ?? '') !== $clientId) {
+            throw new \InvalidArgumentException('Token de SSO inválido', 401);
+        }
+        // Exige email verificado: evita usar cuentas de Google sin validar
+        if (($payload['email_verified'] ?? false) !== true) {
+            throw new \InvalidArgumentException('El email de la cuenta de Google no está verificado', 401);
+        }
+        return $payload;
+    }
+
+    // Valida un id_token de Microsoft Entra ID contra el JWKS del tenant configurado.
+    private function validarMicrosoft(string $idToken): array
+    {
+        // Client ID esperado (claim "aud"). Vacío = SSO de Microsoft desactivado.
+        $clientId = Config::get('SSO_MICROSOFT_CLIENT_ID');
+        if ($clientId === '') {
+            throw new \InvalidArgumentException('SSO de Microsoft no está configurado en el servidor', 501);
+        }
+        // Tenant: 'common' permite cuentas personales de Microsoft y corporativas (por defecto)
+        $tenant = Config::get('SSO_MICROSOFT_TENANT', 'common');
+        $emisorEsperado = "https://login.microsoftonline.com/{$tenant}/v2.0";
+        // Descubrimiento OpenID Connect: de ahí se obtiene la URL del JWKS del tenant
+        $discovery = $this->httpGetJson(
+            "https://login.microsoftonline.com/{$tenant}/v2.0/.well-known/openid-configuration"
+        );
+        if (!is_array($discovery) || empty($discovery['jwks_uri'])) {
+            throw new \RuntimeException('No se pudo obtener la configuración de Microsoft', 503);
+        }
+        // JWKS: el conjunto de claves públicas RSA del tenant (Microsoft las rota)
+        $jwks = $this->httpGetJson($discovery['jwks_uri']);
+        if (!is_array($jwks) || empty($jwks['keys'])) {
+            throw new \RuntimeException('No se pudieron obtener las claves públicas de Microsoft', 503);
+        }
+        // firebase/php-jwt convierte el JWKS a un set de claves (elige por "kid" al decodificar)
+        $keySet = JWK::parseKeySet($jwks);
+        // Decodifica y VERIFICA la firma + expiración automáticamente
+        $payload = (array) JWT::decode($idToken, $keySet);
+        // Valida el emisor exacto del tenant configurado
+        if (($payload['iss'] ?? '') !== $emisorEsperado) {
+            throw new \InvalidArgumentException('Token de SSO inválido', 401);
+        }
+        // Valida que el token fue emitido para ESTE client_id (no para otra app)
+        if (($payload['aud'] ?? '') !== $clientId) {
+            throw new \InvalidArgumentException('Token de SSO inválido', 401);
+        }
+        return $payload;
+    }
+
+    // Decodifica únicamente el HEADER del token (sin verificar) para conocer el kid.
+    private function obtenerHeader(string $idToken): array
+    {
+        $partes = explode('.', $idToken);
+        // El JWT usa base64url: se restaura "+" y "/" antes de decodificar
+        $jsonHeader = base64_decode(strtr($partes[0], '-_', '+/'));
+        $header = json_decode($jsonHeader, true);
+        if (!is_array($header)) {
+            throw new \InvalidArgumentException('Token de SSO inválido', 401);
+        }
+        return $header;
+    }
+
+    // Convierte un certificado X.509 (PEM) en su clave pública RSA (PEM).
+    private function certificadoPublico(string $certificadoPem): string
+    {
+        // openssl_x509_read valida el certificado y permite extraer la clave pública
+        $cert = openssl_x509_read($certificadoPem);
+        if ($cert === false) {
+            return ''; // Certificado ilegible: no se puede verificar la firma
+        }
+        // Extrae la clave pública del certificado
+        $clave = openssl_pkey_get_public($cert);
+        // Los detalles de la clave incluyen "key": la clave pública en formato PEM
+        $detalles = openssl_pkey_get_details($clave);
+        // Devuelve la clave pública PEM (o '' si no está disponible)
+        return $detalles['key'] ?? '';
+    }
+
+    // GET simple hacia una URL que responde JSON (con timeout y User-Agent propio).
+    private function httpGetJson(string $url): ?array
+    {
+        // Inicializa una sesión cURL contra la URL indicada
+        $ch = curl_init($url);
+        // Opciones: devolver el cuerpo, timeout de 10 s y seguir redirecciones
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, // Devuelve el contenido en vez de imprimirlo
+            CURLOPT_TIMEOUT => 10,          // No esperar más de 10 segundos
+            CURLOPT_FOLLOWLOCATION => true, // Seguir redirecciones (http -> https)
+            CURLOPT_USERAGENT => 'SaludWEB-SSO/1.0', // Identificar este cliente HTTP
+        ]);
+        $cuerpo = curl_exec($ch);                 // Ejecuta la petición
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); // Código HTTP resultante
+        curl_close($ch);                          // Libera los recursos de la sesión cURL
+        // Solo se aceptan respuestas 2xx; cualquier otra equivale a "sin claves"
+        if ($status < 200 || $status >= 300 || $cuerpo === false) {
+            return null;
+        }
+        // Convierte el JSON de la respuesta a un array asociativo
+        return json_decode($cuerpo, true);
     }
 
     /**
