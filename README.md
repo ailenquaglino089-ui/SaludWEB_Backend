@@ -69,3 +69,13 @@ Debe responder `200` con `{"data":{"status":"ok",...},"message":"API SaludWEB - 
 1. `POST /api/auth/login` con `{ "email": "...", "password": "..." }` → devuelve un JWT.
 2. Enviarlo en cada petición protegida: `Authorization: Bearer <jwt>`.
 3. El secreto se toma de la variable de entorno `JWT_SECRET` o se genera en `storage/secret.key`.
+
+## SSO (Google / Microsoft Entra ID)
+4. `POST /api/auth/sso` con `{ "provider": "google" | "microsoft", "id_token": "..." }` → verifica
+   la firma del `id_token` contra las claves públicas del proveedor (JWKS) y devuelve el JWT de
+   SaludWEB (misma respuesta que `/api/auth/login`). Solo habilita cuentas locales existentes y activas
+   (el email del proveedor debe coincidir); no se auto-crean cuentas.
+5. Configurá las variables de entorno en `.env`: `SSO_GOOGLE_CLIENT_ID`, `SSO_MICROSOFT_CLIENT_ID`
+   y `SSO_MICROSOFT_TENANT` (ver `.env.example`). Sin credenciales, el endpoint responde `501`.
+6. El `id_token` lo obtiene la app móvil `SaludWEB_Mobile` con `expo-auth-session` (flujo público/PKCE,
+   sin secret en el dispositivo); los botones de cada proveedor solo se muestran si está configurado.

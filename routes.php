@@ -194,6 +194,21 @@ $router->post('/api/auth/login', function () use ($authService, $rateLimiter) {
     }
 });
 
+// POST /api/auth/sso - Login con SSO (Google / Microsoft) (pública)
+// El cliente envía { provider, id_token }; el backend valida la firma
+// contra el proveedor y devuelve el JWT de SaludWEB (igual que /auth/login)
+$router->post('/api/auth/sso', function () use ($authService, $rateLimiter) {
+    try {
+        // Crea el controlador de autenticación (mismo servicio que el login)
+        $controller = new AuthController($authService, $rateLimiter);
+        // sso() valida el id_token del proveedor y emite el token JWT propio
+        $controller->sso();
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+});
+
 // ============================================================
 // RUTAS PROTEGIDAS (requieren JWT)
 // ============================================================

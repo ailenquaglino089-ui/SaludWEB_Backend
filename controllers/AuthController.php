@@ -99,6 +99,65 @@ class AuthController
     }
 
     /**
+     * POST /api/auth/sso - Login con SSO (Google / Microsoft)
+     * Body: JSON con provider ("google" | "microsoft") e id_token
+     * Response: Datos del usuario + token JWT (igual que login)
+     *
+     * Seguridad: rate limiting por IP (5 intentos / 15 min) y el token
+     * se valida contra las claves públicas del proveedor (firma + aud + iss).
+     */
+    // Método que atiende la petición POST /api/auth/sso
+    public function sso(): void
+    {
+        // Obtiene la IP del cliente; si no existe usa un valor neutro por defecto
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        // Clave única del rate limiter para el flujo de SSO por IP
+        $clave = 'sso:' . $ip;
+
+        // Bloque try del login con SSO
+        try {
+            // Anti fuerza bruta: mismo límite que el login clásico (5 / 15 min)
+            if (!$this->rateLimiter->permitir($clave, 5, 900)) {
+                // HTTP 429: la IP excedió los intentos permitidos en la ventana
+                Response::error('Demasiados intentos fallidos. Intentá nuevamente en 15 minutos.', 429);
+            }
+
+            // Lee el cuerpo JSON (provider e id_token) en un array asociativo
+            $data = json_decode(file_get_contents('php://input'), true) ?? [];
+            // Normaliza el proveedor: minúsculas y sin espacios externos
+            $provider = strtolower(trim($data['provider'] ?? ''));
+            // El id_token es el JWT de identidad que emite el proveedor
+            $idToken = $data['id_token'] ?? '';
+
+            // Valida que ambos campos obligatorios hayan sido enviados
+            if (!in_array($provider, ['google', 'microsoft'], true) || $idToken === '') {
+                // HTTP 422: faltan datos obligatorios o el proveedor no es válido
+                Response::error('Se requieren provider (google|microsoft) e id_token', 422);
+            }
+
+            // Delega en el servicio la validación del token y la emisión del JWT propio
+            $usuario = $this->service->loginSso($provider, $idToken);
+
+            // Éxito: se limpian los contadores de la IP (igual que el login clásico)
+            $this->rateLimiter->limpiar($clave);
+            // Responde 200 OK con los datos del usuario y el token JWT generado
+            Response::ok($usuario, 'Login exitoso');
+        } catch (\InvalidArgumentException $e) {
+            // Token inválido, sin cuenta local o SSO no configurado → intento fallido
+            $this->rateLimiter->registrar($clave);
+            // Responde el error con el código HTTP indicado (401/422/501)
+            Response::error($e->getMessage(), $e->getCode() ?: 401);
+        } catch (\RuntimeException $e) {
+            // Error al obtener las claves públicas del proveedor (falla externa, 503)
+            $this->rateLimiter->registrar($clave);
+            Response::error($e->getMessage(), $e->getCode() ?: 503);
+        } catch (\Exception $e) {
+            // Captura errores internos imprevistos (nunca expone detalles)
+            Response::error('Error interno del servidor', 500);
+        }
+    }
+
+    /**
      * POST /api/auth/cambiar-contrasena
      * Cambia la contraseña de un usuario autenticado
      * Body: passwordActual y passwordNueva
