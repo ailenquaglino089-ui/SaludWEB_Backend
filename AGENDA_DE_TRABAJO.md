@@ -6,9 +6,11 @@
 | **Materia** | Programación IV |
 | **Equipo** | Equipo SaludWEB (Ailen Quaglino) |
 | **Fecha de emisión** | 22/09/2026 |
-| **Estado** | En curso — próximos hitos: Mobile y entrega final |
+| **Estado** | En curso — próximos hitos: Pruebas Mobile y entrega final |
+| **Última actualización** | 24/09/2026 |
 
-> Las fechas son propuestas y ajustables. Se marcan ⚠️ con el avance real hasta hoy.
+> Las fechas son propuestas y ajustables. Se marca el avance real hasta hoy.
+> 24/09/2026: Fase E avanzada — guía **"Adaptar el sistema a mobile"** aplicada en `SaludWEB_Mobile` (commit `3fe974a`).
 
 ---
 
@@ -65,8 +67,8 @@ profesor y quede registro del estado de cada tarea.
 
 | N° | Actividad | Responsable | Inicio | Fin | Estado |
 | --- | --- | --- | --- | --- | --- |
-| E1 | Revisión del estado actual de `SaludWEB_Mobile` | Equipo | 23/09/2026 | 25/09/2026 | ⏳ Pendiente |
-| E2 | Adaptación de pantallas a la API (login, listados) | Equipo | 28/09/2026 | 02/10/2026 | ⏳ Pendiente |
+| E1 | Revisión del estado actual de `SaludWEB_Mobile` (auditoría según guía) | Equipo | 23/09/2026 | 24/09/2026 | ✔ Completado |
+| E2 | Aplicación de la guía "Adaptar el sistema a mobile": login onBlur + mostrar/ocultar contraseña, Bottom Navigation Bar sticky, targets táctiles 44px, tipografía 16px, contraste WCAG AA y rendimiento FlatList | Equipo | 24/09/2026 | 24/09/2026 | ✔ Completado |
 | E3 | Pruebas en emulador / dispositivo | Equipo | 05/10/2026 | 06/10/2026 | ⏳ Pendiente |
 
 ### Fase F — Integración, pruebas finales y entrega
@@ -88,6 +90,7 @@ profesor y quede registro del estado de cada tarea.
 | Issues 1–5 corregidos y verificados | 11/09/2026 ✔ |
 | Guía CRUD + paginado + regla "solo médicos recetan" | 22/09/2026 ✔ |
 | Project Brief y Agenda de Trabajo | 22/09/2026 ✔ |
+| Guía "Adaptar el sistema a mobile" aplicada en `SaludWEB_Mobile` | 24/09/2026 ✔ |
 | Aplicación Mobile funcional | 06/10/2026 |
 | Pruebas integrales finalizadas | 09/10/2026 |
 | Docs finales + merge a `main` | 15/10/2026 |
