@@ -29,12 +29,16 @@ class AuthController
     {
         // Bloque try: intenta registrar al usuario y captura los errores que puedan surgir
         try {
-            // Lee el cuerpo JSON de la petición y lo convierte en array asociativo; si falla o viene vacío usa []
-            $data = json_decode(file_get_contents('php://input'), true) ?? [];
+            // Lee el cuerpo JSON de la petición y lo convierte en array asociativo
+            // CuerpoJson se encarga de rechazar un cuerpo vacío o mal formado con un 400
+            $data = CuerpoJson::leer();
             // Delega en el servicio la validación y la creación del nuevo usuario
             $usuario = $this->service->registro($data);
             // Responde con JSON consistente (helper Response) y código 201 Created
             Response::ok($usuario, 'Usuario registrado correctamente', 201);
+        } catch (\RuntimeException $e) {
+            // Cuerpo vacío, mal formado o que no es un objeto JSON → 400
+            Response::error($e->getMessage(), $e->getCode() ?: 400);
         } catch (\InvalidArgumentException $e) {
             // Captura errores de validación de entrada (email inválido, duplicado, etc.)
             Response::error($e->getMessage(), $e->getCode() ?: 422);
@@ -69,8 +73,8 @@ class AuthController
                 Response::error('Demasiados intentos fallidos. Intentá nuevamente en 15 minutos.', 429);
             }
 
-            // Lee el cuerpo JSON (email y password) y lo convierte en array; si falta, usa []
-            $data = json_decode(file_get_contents('php://input'), true) ?? [];
+            // Lee el cuerpo JSON (email y password) y lo convierte en array
+            $data = CuerpoJson::leer();
 
             // Valida que el cliente haya enviado tanto el email como la contraseña
             if (empty($data['email']) || empty($data['password'])) {
@@ -86,6 +90,12 @@ class AuthController
             $this->rateLimiter->limpiar($clave);
             // Responde 200 OK con los datos del usuario y el token JWT generado
             Response::ok($usuario, 'Login exitoso');
+        } catch (\RuntimeException $e) {
+            // Cuerpo mal formado: NO se cuenta como intento fallido.
+            // Si se contara, cualquiera podría bloquear la IP de un usuario
+            // legítimo mandando 5 peticiones con basura en lugar de adivinar
+            // la contraseña.
+            Response::error($e->getMessage(), $e->getCode() ?: 400);
         } catch (\InvalidArgumentException $e) {
             // Credenciales inválidas → se registra un intento fallido
             // Incrementa el contador de la IP: al llegar a 5 se dispara el bloqueo temporal
@@ -123,7 +133,7 @@ class AuthController
             }
 
             // Lee el cuerpo JSON (provider e id_token) en un array asociativo
-            $data = json_decode(file_get_contents('php://input'), true) ?? [];
+            $data = CuerpoJson::leer();
             // Normaliza el proveedor: minúsculas y sin espacios externos
             $provider = strtolower(trim($data['provider'] ?? ''));
             // El id_token es el JWT de identidad que emite el proveedor
@@ -142,6 +152,10 @@ class AuthController
             $this->rateLimiter->limpiar($clave);
             // Responde 200 OK con los datos del usuario y el token JWT generado
             Response::ok($usuario, 'Login exitoso');
+        } catch (\RuntimeException $e) {
+            // Cuerpo mal formado: NO cuenta como intento fallido (mismo motivo
+            // que en login: no se quiere que un tercero bloquee una IP ajena)
+            Response::error($e->getMessage(), $e->getCode() ?: 400);
         } catch (\InvalidArgumentException $e) {
             // Token inválido, sin cuenta local o SSO no configurado → intento fallido
             $this->rateLimiter->registrar($clave);
@@ -168,7 +182,7 @@ class AuthController
         // Bloque try del cambio de contraseña
         try {
             // Lee el cuerpo JSON de la petición (passwordActual y passwordNueva)
-            $data = json_decode(file_get_contents('php://input'), true) ?? [];
+            $data = CuerpoJson::leer();
 
             // El usuario se resuelve por el token Bearer o por sesión
             // Intenta obtener el ID del JWT; si no hay token, lo toma de la sesión PHP
@@ -194,6 +208,9 @@ class AuthController
 
             // Responde 200 OK confirmando el cambio de contraseña
             Response::ok(null, 'Contraseña cambiada correctamente');
+        } catch (\RuntimeException $e) {
+            // 400: cuerpo vacío o mal formado
+            Response::error($e->getMessage(), $e->getCode() ?: 400);
         } catch (\InvalidArgumentException $e) {
             // Captura errores de validación (contraseña actual incorrecta → 401, nueva débil → 422)
             Response::error($e->getMessage(), $e->getCode() ?: 401);
@@ -232,6 +249,49 @@ class AuthController
             Response::error($e->getMessage(), 401);
         } catch (\Exception $e) {
             // Captura errores internos imprevistos
+            Response::error('Error interno del servidor', 500);
+        }
+    }
+
+    /**
+     * POST /api/auth/vincular - Vincula la cuenta con la ficha del paciente o del médico
+     *
+     * Módulo "Sistema de gestión de citas online". Body: { tipo, documento }
+     *   tipo = 'paciente' → documento = DNI
+     *   tipo = 'medico'   → documento = número de matrícula profesional
+     *
+     * Sin este paso un usuario registrado no puede reservar: la API necesita
+     * saber a quién se le asigna el turno.
+     */
+    public function vincular(): void
+    {
+        try {
+            // Requiere sesión iniciada: la vinculación es siempre "mi cuenta"
+            $usuarioId = $this->obtenerIdDesdeToken() ?? ($_SESSION['usuario_id'] ?? null);
+            if (!$usuarioId) {
+                Response::error('Usuario no autenticado', 401);
+            }
+
+            // Se lee el cuerpo JSON de la petición
+            $data = CuerpoJson::leer();
+            $tipo = strtolower(trim((string)($data['tipo'] ?? '')));
+            $documento = trim((string)($data['documento'] ?? ''));
+
+            // El servicio verifica el documento, compara el nombre en el caso
+            // del paciente y se encarga de todos los mensajes de error
+            $usuario = $this->service->vincularEntidad((int)$usuarioId, $tipo, $documento);
+
+            Response::ok(
+                $usuario,
+                'Cuenta vinculada correctamente. Ya podés reservar turnos.'
+            );
+        } catch (\InvalidArgumentException $e) {
+            // 422: el documento no coincide o falta información
+            Response::error($e->getMessage(), $e->getCode() ?: 422);
+        } catch (\RuntimeException $e) {
+            // 401/403/404: sesión inválida, cuenta desactivada o ficha ajena
+            Response::error($e->getMessage(), $e->getCode() ?: 403);
+        } catch (\Exception $e) {
             Response::error('Error interno del servidor', 500);
         }
     }

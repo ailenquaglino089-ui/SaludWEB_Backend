@@ -41,14 +41,37 @@ class MedicoRepository implements MedicoRepositoryInterface
      * 
      * @return array Arreglo asociativo con todos los médicos
      */
-    public function obtenerTodos(): array
+    public function obtenerTodos(array $filtros = []): array
     {
-        // query() ejecuta una consulta SQL directamente (sin parámetros)
-        $stmt = $this->pdo->query(
-            // SELECT * : trae todas las columnas de la tabla medicos
-            // ORDER BY activo DESC: los activos (1) aparecen primero; nombre ASC: orden alfabético dentro del grupo
-            "SELECT * FROM medicos ORDER BY activo DESC, nombre ASC"
-        );
+        // Se arman las condiciones una parte por vez, con placeholders, para
+        // no concatenar valores. Todos los tipos de filtro aceptados son
+        // enteros o el valor fijo 1, así que no hay superficie de inyección.
+        $where = [];
+        $parametros = [];
+
+        // Filtro por activo: es el que usan las estadísticas, que no deben
+        // contar los turnos ofrecidos por profesionales dados de baja
+        if (isset($filtros['activo'])) {
+            $where[] = 'activo = ?';
+            $parametros[] = (int)$filtros['activo'];
+        }
+
+        // Filtro por un profesional puntual
+        if (!empty($filtros['id'])) {
+            $where[] = 'id = ?';
+            $parametros[] = (int)$filtros['id'];
+        }
+
+        $sql = 'SELECT * FROM medicos';
+        if (count($where) > 0) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        // ORDER BY activo DESC: los activos (1) aparecen primero; nombre ASC: orden alfabético dentro del grupo
+        $sql .= ' ORDER BY activo DESC, nombre ASC';
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($parametros);
+
         // fetchAll() obtiene TODAS las filas como un arreglo
         // PDO::FETCH_ASSOC: cada fila es un array asociativo [columna => valor]
         // Ej: [ ['id' => 1, 'nombre' => 'Dr. Pérez'], ... ]
@@ -64,19 +87,50 @@ class MedicoRepository implements MedicoRepositoryInterface
      * @param int $offset Desde qué fila empezar ((página - 1) * por_página)
      * @param int $porPagina Cuántos médicos trae la página
      * @param string $busqueda Texto de búsqueda opcional
+     * @param string $especialidad Filtro exacto de especialidad (opcional)
+     * @param int|null $activo 1 = solo activos, 0 = solo inactivos, null = todos
      * @return array Arreglo con los médicos de la página
      */
-    public function obtenerPaginado(int $offset, int $porPagina, string $busqueda = ''): array
+    public function obtenerPaginado(int $offset, int $porPagina, string $busqueda = '', string $especialidad = '', ?int $activo = null): array
     {
         // SELECT base con todas las columnas de medicos
         $sql = "SELECT * FROM medicos";
         // Parámetros que se bindean después en orden (protección anti inyección SQL)
         $parametros = [];
 
+        // Los filtros se acumulan en un arreglo de condiciones AND.
+        // Se hace así (y no con un if/else) porque texto de búsqueda,
+        // especialidad y estado son filtros INDEPENDIENTES: el catálogo de la
+        // web los usa juntos ("los dermatólogos activos que se llamen García").
+        $where = [];
+
         // Si hay texto de búsqueda, se filtra con LIKE en nombre, matrícula o especialidad
         if ($busqueda !== '') {
-            $sql .= " WHERE nombre LIKE ? OR matricula LIKE ? OR especialidad LIKE ?";
+            $where[] = "(nombre LIKE ? OR matricula LIKE ? OR especialidad LIKE ?)";
             $parametros = ["%$busqueda%", "%$busqueda%", "%$busqueda%"];
+        }
+
+        // Filtro por especialidad con coincidencia EXACTA (=), no con LIKE.
+        // La diferencia importa: el catálogo pide "los médicos de
+        // Cardiología", y un LIKE traería también "Cardiología Pediátrica"
+        // o "No-Cardiología", que no es lo que el filtro pidió.
+        if ($especialidad !== '') {
+            $where[] = "especialidad = ?";
+            $parametros[] = $especialidad;
+        }
+
+        // Filtro por estado. El catálogo PÚBLICO lo usa con activo=1 porque un
+        // profesional dado de baja no puede recibir turnos: mostrarlo ofrecería
+        // un turno que después el backend no va a permitir reservar. El panel
+        // de administración, en cambio, lo deja en null para ver ambos.
+        if ($activo !== null) {
+            $where[] = "activo = ?";
+            $parametros[] = (int) $activo;
+        }
+
+        // Se aplica el WHERE solo si hay alguna condición acumulada
+        if ($where) {
+            $sql .= " WHERE " . implode(' AND ', $where);
         }
 
         // Orden (igual que obtenerTodos) + LIMIT/OFFSET para recortar la página
@@ -103,19 +157,43 @@ class MedicoRepository implements MedicoRepositoryInterface
      * Se usa junto a obtenerPaginado() para calcular las páginas del listado.
      *
      * @param string $busqueda Texto de búsqueda opcional
+     * @param string $especialidad Filtro exacto de especialidad (opcional)
+     * @param int|null $activo 1 = solo activos, 0 = solo inactivos, null = todos
      * @return int Total de médicos
      */
-    public function contar(string $busqueda = ''): int
+    public function contar(string $busqueda = '', string $especialidad = '', ?int $activo = null): int
     {
         // COUNT(*) devuelve un número, no las filas completas: es barato y rápido
         $sql = "SELECT COUNT(*) FROM medicos";
 
-        // Si hay búsqueda, se agrega el mismo filtro LIKE que en obtenerPaginado()
+        // Mismas condiciones que obtenerPaginado(), por dos motivos: el total
+        // tiene que contar exactamente lo que el listado devuelve (si no, la
+        // paginación muestra páginas vacías) y se evita duplicar la lógica
+        // de filtros en dos lugares distintos.
+        $where = [];
+        $parametros = [];
+
         if ($busqueda !== '') {
-            $sql .= " WHERE nombre LIKE ? OR matricula LIKE ? OR especialidad LIKE ?";
+            $where[] = "(nombre LIKE ? OR matricula LIKE ? OR especialidad LIKE ?)";
+            // Patrón LIKE único reutilizado en los tres campos
+            $like = "%$busqueda%";
+            $parametros = [$like, $like, $like];
+        }
+
+        if ($especialidad !== '') {
+            $where[] = "especialidad = ?";
+            $parametros[] = $especialidad;
+        }
+
+        if ($activo !== null) {
+            $where[] = "activo = ?";
+            $parametros[] = (int) $activo;
+        }
+
+        if ($where) {
+            $sql .= " WHERE " . implode(' AND ', $where);
             $stmt = $this->pdo->prepare($sql);
-            $like = "%$busqueda%";  // Patrón LIKE único reutilizado en los tres campos
-            $stmt->execute([$like, $like, $like]);
+            $stmt->execute($parametros);
         } else {
             // Sin búsqueda: query() directo (no tiene parámetros, sin riesgo de inyección)
             $stmt = $this->pdo->query($sql);
@@ -148,6 +226,37 @@ class MedicoRepository implements MedicoRepositoryInterface
 
         // Operador ?: si $result es false/null, devuelve null
         // Si no, devuelve $result
+        return $result ?: null;
+    }
+
+    /**
+     * Obtiene un médico por su número de matrícula profesional
+     *
+     * Módulo "Sistema de gestión de citas online": la matrícula es el
+     * identificador con el que un profesional demuestra quién es al vincular
+     * su cuenta de usuario con su ficha. Por eso hace falta una búsqueda
+     * directa por ese campo.
+     *
+     * @param string $matricula Número de matrícula
+     * @return array|null El médico encontrado o null si no existe
+     */
+    public function obtenerPorMatricula(string $matricula): ?array
+    {
+        // Se limpia el dato: el usuario puede escribir " 44556 " con espacios
+        $matricula = trim($matricula);
+
+        // Si viene vacío, no hay nada que buscar: se devuelve null directo
+        // (una consulta con cadena vacasa devolvería cualquier coincidencia)
+        if ($matricula === '') {
+            return null;
+        }
+
+        // Consulta parametrizada: el ? evita inyección SQL
+        $stmt = $this->pdo->prepare("SELECT * FROM medicos WHERE matricula = ? LIMIT 1");
+        $stmt->execute([$matricula]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // Devuelve la fila o null si no encontró nada
         return $result ?: null;
     }
 

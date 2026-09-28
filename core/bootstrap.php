@@ -57,6 +57,11 @@ require_once __DIR__ . '/../db.php';
 // Carga el helper centralizado de respuestas JSON
 require_once __DIR__ . '/Response.php';
 
+// Carga el helper de lectura del cuerpo JSON de las peticiones.
+// Se carga acá (y no dentro de cada controlador) para que el orden de
+// require_once sea explícito y no dependa del archivo que se cargue primero.
+require_once __DIR__ . '/CuerpoJson.php';
+
 // Carga los contratos (interfaces) de acceso a datos
 require_once __DIR__ . '/../persistence/MedicoRepositoryInterface.php';
 require_once __DIR__ . '/../persistence/PacienteRepositoryInterface.php';
@@ -87,6 +92,49 @@ require_once __DIR__ . '/../controllers/PrescripcionController.php';
 // Carga servicio y controlador de Autenticación
 require_once __DIR__ . '/../services/AuthService.php';
 require_once __DIR__ . '/../controllers/AuthController.php';
+
+// ============================================================
+// MÓDULO: "Sistema de gestión de citas online" (Turnera)
+// ============================================================
+// Orden de carga: primero los contratos (interfaces), después las
+// implementaciones, después los servicios y por último los controladores.
+// PHP no tiene autoload propio en este proyecto, así que el orden lo define
+// este archivo; por eso está comentado y no es "decorativo".
+
+// Contratos (interfaces) de la turnera
+require_once __DIR__ . '/../persistence/EspecialidadRepositoryInterface.php';
+require_once __DIR__ . '/../persistence/DisponibilidadRepositoryInterface.php';
+require_once __DIR__ . '/../persistence/CitaRepositoryInterface.php';
+require_once __DIR__ . '/../persistence/NotificacionRepositoryInterface.php';
+
+// Implementaciones de acceso a datos de la turnera
+require_once __DIR__ . '/../persistence/EspecialidadRepository.php';
+require_once __DIR__ . '/../persistence/DisponibilidadRepository.php';
+require_once __DIR__ . '/../persistence/CitaRepository.php';
+require_once __DIR__ . '/../persistence/NotificacionRepository.php';
+// ContactoRepository se carga junto a los anteriores: resuelve el email del
+// paciente/médico para saber a quién se le puede notificar
+require_once __DIR__ . '/../persistence/ContactoRepository.php';
+
+// Capa de negocio (servicios) de la turnera
+require_once __DIR__ . '/../services/EspecialidadService.php';
+require_once __DIR__ . '/../services/CitaService.php';
+require_once __DIR__ . '/../services/DisponibilidadService.php';
+require_once __DIR__ . '/../services/NotificacionService.php';
+require_once __DIR__ . '/../services/EstadisticaService.php';
+
+// Proveedor de notificaciones. Hoy es un stub (simula el envío y registra
+// el resultado). Cuando se integre un proveedor real (email, WhatsApp, SMS)
+// se cambia solo este archivo: la interfaz es el contrato estable.
+require_once __DIR__ . '/../services/Notificacion/ProveedorNotificacionesInterface.php';
+require_once __DIR__ . '/../services/Notificacion/ProveedorNotificacionesStub.php';
+
+// Capa HTTP (controladores) de la turnera
+require_once __DIR__ . '/../controllers/CitaController.php';
+require_once __DIR__ . '/../controllers/DisponibilidadController.php';
+require_once __DIR__ . '/../controllers/NotificacionController.php';
+require_once __DIR__ . '/../controllers/EspecialidadController.php';
+require_once __DIR__ . '/../controllers/EstadisticaController.php';
 
 // Calcula la ruta base del proyecto
 // dirname($_SERVER['SCRIPT_NAME']) devuelve algo como "/Organizacion_Modulos"
@@ -132,6 +180,55 @@ $rateLimiter = new RateLimiter(__DIR__ . '/../storage/rate');
 
 // Crea el servicio de Autenticación (recibe PDO + JwtService por inyección)
 $authService = new AuthService($pdo, $jwtService);
+
+// ============================================================
+// ENSAMBLADO DE LA TURNERA (inyección de dependencias)
+// ============================================================
+// Se instancia de abajo hacia arriba: cada capa recibe por constructor lo
+// que necesita de la capa de abajo. Así el servicio se puede probar con un
+// dobles de repositorio sin tocar la base de datos.
+
+// Especialidades: solo necesita la conexión
+$especialidadRepo = new EspecialidadRepository($pdo);
+
+// Disponibilidad: la tabla de agenda la usa el servicio de disponibilidad
+// y también el de citas (para saber qué turnos se pueden generar)
+$disponibilidadRepo = new DisponibilidadRepository($pdo);
+
+// Citas: es la fuente de verdad de los turnos
+$citaRepo = new CitaRepository($pdo);
+
+// Notificaciones: es la bandeja de salida (outbox), no el estado del turno
+$notificacionRepo = new NotificacionRepository($pdo);
+
+// Contacto: resuelve a quién se le puede avisar (email del paciente/médico)
+$contactoRepo = new ContactoRepository($pdo);
+
+// Proveedor de notificaciones: hoy simula el envío. Si algún día se conecta
+// un proveedor real, este es el ÚNICO punto que hay que cambiar.
+$proveedorNotificaciones = new ProveedorNotificacionesStub();
+
+// Servicios de la turnera
+$citaService = new CitaService(
+    $citaRepo,
+    $disponibilidadRepo,
+    $medicoRepo,
+    $pacienteRepo
+);
+$disponibilidadService = new DisponibilidadService($disponibilidadRepo, $medicoRepo);
+
+// Especialidades: el servicio concentra las reglas del catálogo (duplicados
+// ignorando tildes, no borrar con profesionales asociados)
+$especialidadService = new EspecialidadService($especialidadRepo);
+$notificacionService = new NotificacionService(
+    $notificacionRepo,
+    $citaRepo,
+    $contactoRepo,
+    $proveedorNotificaciones
+);
+// Las estadísticas necesitan las citas, los médicos (quién atiende) y la
+// disponibilidad (cuántos turnos se ofrecieron en cada bloque)
+$estadisticaService = new EstadisticaService($citaRepo, $medicoRepo, $disponibilidadRepo);
 
 // Las variables $router, $pdo, y todos los servicios
 // quedan disponibles en routes.php que es quien incluye este archivo

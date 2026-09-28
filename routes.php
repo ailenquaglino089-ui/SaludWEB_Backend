@@ -222,6 +222,17 @@ $router->get('/api/auth/me', function () use ($authService, $authMiddleware, $ra
     $controller->obtenerUsuarioActual();
 });
 
+// POST /api/auth/vincular - Vincular la cuenta con la ficha (protegida)
+// Módulo Turnera: sin este vínculo el usuario no puede reservar, porque la API
+// necesita saber a QUIÉN se le asigna el turno.
+// Body: { "tipo": "paciente", "documento": "30111222" }  (DNI)
+//       { "tipo": "medico",   "documento": "44556" }    (matrícula)
+$router->post('/api/auth/vincular', function () use ($authService, $authMiddleware, $rateLimiter) {
+    $authMiddleware->verificarToken();
+    $controller = new AuthController($authService, $rateLimiter);
+    $controller->vincular();
+});
+
 // POST /api/auth/logout - Cerrar sesión (protegida)
 $router->post('/api/auth/logout', function () use ($authService, $authMiddleware, $rateLimiter) {
     // verificarToken() valida el JWT recibido en el header Authorization; si falta/expiró responde 401
@@ -450,6 +461,275 @@ $router->delete('/api/prescripciones/{id}', function ($id) use ($prescripcionSer
         http_response_code(500);
         echo json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
     }
+});
+
+// ============================================================
+// SISTEMA DE GESTIÓN DE CITAS ONLINE (TURNERA)
+// ============================================================
+// Módulo: "Sistema de gestión de citas online"
+// ------------------------------------------------------------
+// Estas rutas se suman a las que ya existen (médicos, pacientes,
+// prescripciones) sin modificarlas, para que el módulo nuevo quede
+// aislado y se pueda revisar por separado.
+//
+// APLICACIÓN DE LA GUÍA DE DATOS EN TIEMPO REAL
+// No se usa SSE, WebSocket, Firebase ni Supabase Realtime. El motivo está
+// escrito al inicio de CitaService y en EstadisticaService, pero se resume:
+//   • Response::json() hace exit, y SSE exige mantener el proceso vivo
+//   • No hay credenciales ni secretos disponibles en este entorno
+//   • La guía indica usar push SOLO cuando el retraso se percibe; una
+//     agenda de turnos se puede refrescar por polling sin que se note
+//   • Duplicar el estado en una base "en tiempo real" genera dos fuentes
+//     de verdad que pueden discrepar, que es peor que estar 30 s desfasado
+// En su lugar, polling adaptativo en el cliente: rápido cuando la pantalla
+// está activa y hay cambios, y con espera larga cuando nada cambia.
+// ============================================================
+
+// ============================================================
+// TURNERA - CATÁLOGOS PÚBLICOS
+// Se pueden consultar sin iniciar sesión: son datos de catálogo, no clínicos.
+// ============================================================
+
+// GET /api/especialidades - Listado de especialidades con conteo de médicos
+// Es la primera pantalla del flujo de reserva: el paciente elige especialidad
+// y recién después ve los profesionales disponibles.
+$router->get('/api/especialidades', function () use ($especialidadService, $authService) {
+    $controller = new EspecialidadController($especialidadService, $authService);
+    $controller->index();
+});
+
+// GET /api/especialidades/{id} - Detalle de una especialidad
+$router->get('/api/especialidades/{id}', function ($id) use ($especialidadService, $authService) {
+    $controller = new EspecialidadController($especialidadService, $authService);
+    $controller->show((int) $id);
+});
+
+// ============================================================
+// TURNERA - AGENDA PÚBLICA
+// ============================================================
+
+// GET /api/disponibilidades?id_medico=1 - Agenda publicada de un profesional
+// PÚBLICA: el paciente tiene que ver los horarios ANTES de comprometerse
+// a reservar. Si exigiera login, se perdería a quien solo está consultando.
+$router->get('/api/disponibilidades', function () use ($disponibilidadService, $authService) {
+    $controller = new DisponibilidadController($disponibilidadService, $authService);
+    $controller->index();
+});
+
+// GET /api/citas/disponibilidad?id_medico=1&fecha=2026-10-01 - Turnos concretos
+// PÚBLICA a propósito, pero devuelve SOLO si el horario está libre u ocupado:
+// nunca el nombre del paciente ni el motivo de la consulta. La disponibilidad
+// es información pública; los turnos ya tomados son datos de terceros.
+$router->get('/api/citas/disponibilidad', function () use ($citaService, $authService) {
+    $controller = new CitaController($citaService, $authService);
+    $controller->disponibilidad();
+});
+
+// GET /api/citas/agenda?id_medico=1&desde=...&hasta=... - Agenda unificada
+//
+// PROTEGIDA, y no pública como estaba antes. La vista de "reservado / libre"
+// que sí puede ver cualquiera ya la cubre /api/citas/disponibilidad, que no
+// expone datos de terceros. Este endpoint devuelve la agenda con los DATOS
+// COMPLETOS de cada turno (nombre del paciente, DNI y motivo de la consulta),
+// así que dejarlo abierto significa que cualquiera que consultara la URL veía
+// la lista de pacientes del consultorio, con sus documentos y su motivo de
+// consulta.
+//
+// El polling del frontend no se rompe con esto: el panel del profesional y el
+// del paciente ya trabajan con token.
+$router->get('/api/citas/agenda', function () use ($citaService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();   // Exige un JWT válido antes de seguir
+    $controller = new CitaController($citaService, $authService);
+    $controller->agenda();
+});
+
+// ============================================================
+// TURNERA - ACCIONES POR TOKEN (públicas, sin login)
+// ============================================================
+
+// El paciente recibe un aviso con un link. El link lleva un token, no un JWT,
+// porque desde el correo o el WhatsApp no hay sesión iniciada en el navegador.
+// El token es aleatorio, dura 7 días y resuelve a un único turno.
+
+// GET /api/notificaciones/token/{token} - Ver de qué turno se trata
+$router->get('/api/notificaciones/token/{token}', function ($token) use ($notificacionService, $authService) {
+    $controller = new NotificacionController($notificacionService, $authService);
+    $controller->resolverPorToken((string) $token);
+});
+
+// POST /api/notificaciones/token/{token}/confirmar - Confirmar que asiste
+$router->post('/api/notificaciones/token/{token}/confirmar', function ($token) use ($notificacionService, $authService) {
+    $controller = new NotificacionController($notificacionService, $authService);
+    $controller->confirmarPorToken((string) $token);
+});
+
+// POST /api/notificaciones/token/{token}/cancelar - Liberar el horario
+$router->post('/api/notificaciones/token/{token}/cancelar', function ($token) use ($notificacionService, $authService) {
+    $controller = new NotificacionController($notificacionService, $authService);
+    $controller->cancelarPorToken((string) $token);
+});
+
+// ============================================================
+// TURNERA - RUTAS PROTEGIDAS (requieren JWT)
+// ============================================================
+
+// GET /api/citas - Mis turnos (paciente) / agenda filtrable (médico, admin)
+// El alcance NO se decide con un parámetro de la URL: el controlador fuerza
+// que un paciente solo vea los suyos, tomándolo del token.
+$router->get('/api/citas', function () use ($citaService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new CitaController($citaService, $authService);
+    $controller->index();
+});
+
+// GET /api/citas/{id} - Ver un turno puntual
+$router->get('/api/citas/{id}', function ($id) use ($citaService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new CitaController($citaService, $authService);
+    $controller->show((int) $id);
+});
+
+// POST /api/citas - Reservar un turno
+$router->post('/api/citas', function () use ($citaService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new CitaController($citaService, $authService);
+    $controller->store();
+});
+
+// POST /api/citas/{id}/cancelar - Cancelar y liberar el horario
+// Tiene ruta propia y no solo PATCH de estado porque es la acción más
+// frecuente de la autogestión y merece un botón claro en la app móvil.
+$router->post('/api/citas/{id}/cancelar', function ($id) use ($citaService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new CitaController($citaService, $authService);
+    $controller->cancelar((int) $id);
+});
+
+// PATCH /api/citas/{id}/estado - Cambiar el estado del turno
+// El servicio define qué estados puede aplicar cada rol: el paciente solo
+// confirma o cancela; el profesional completa o marca ausente.
+$router->patch('/api/citas/{id}/estado', function ($id) use ($citaService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new CitaController($citaService, $authService);
+    $controller->cambiarEstado((int) $id);
+});
+
+// DELETE /api/citas/{id} - Borrar un turno (SOLO ADMIN)
+// Borrar destruye evidencia histórica; en el uso normal corresponde cancelar.
+$router->delete('/api/citas/{id}', function ($id) use ($citaService, $authService, $authMiddleware) {
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['admin']);
+    $controller = new CitaController($citaService, $authService);
+    $controller->destroy((int) $id);
+});
+
+// POST /api/disponibilidades - Publicar un bloque de atención
+// Solo el propio profesional o un admin: es su agenda, no un dato global.
+$router->post('/api/disponibilidades', function () use ($disponibilidadService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new DisponibilidadController($disponibilidadService, $authService);
+    $controller->store();
+});
+
+// PUT/PATCH /api/disponibilidades/{id} - Editar u ocultar un bloque
+$router->put('/api/disponibilidades/{id}', function ($id) use ($disponibilidadService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new DisponibilidadController($disponibilidadService, $authService);
+    $controller->update((int) $id);
+});
+
+$router->patch('/api/disponibilidades/{id}', function ($id) use ($disponibilidadService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new DisponibilidadController($disponibilidadService, $authService);
+    $controller->update((int) $id);
+});
+
+// DELETE /api/disponibilidades/{id} - Quitar un bloque de la agenda
+$router->delete('/api/disponibilidades/{id}', function ($id) use ($disponibilidadService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new DisponibilidadController($disponibilidadService, $authService);
+    $controller->destroy((int) $id);
+});
+
+// GET /api/notificaciones - Avisos del usuario autenticado
+$router->get('/api/notificaciones', function () use ($notificacionService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new NotificacionController($notificacionService, $authService);
+    $controller->index();
+});
+
+// POST /api/notificaciones/recordatorios - Generar los recordatorios pendientes
+// Es idempotente: se puede llamar cada vez que se abre el panel sin enviar
+// avisos duplicados, porque no vuelve a crear uno si la cita ya lo tiene.
+$router->post('/api/notificaciones/recordatorios', function () use ($notificacionService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new NotificacionController($notificacionService, $authService);
+    $controller->generarRecordatorios();
+});
+
+// POST /api/notificaciones/procesar - Enviar los avisos pendientes (SOLO ADMIN)
+// A diferencia del anterior, este sí despacha mensajes, por eso se restringe.
+$router->post('/api/notificaciones/procesar', function () use ($notificacionService, $authService, $authMiddleware) {
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['admin']);
+    $controller = new NotificacionController($notificacionService, $authService);
+    $controller->procesar();
+});
+
+// POST /api/notificaciones/{id}/reintentar - Reintentar un aviso fallido
+$router->post('/api/notificaciones/{id}/reintentar', function ($id) use ($notificacionService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new NotificacionController($notificacionService, $authService);
+    $controller->reintentar((int) $id);
+});
+
+// ============================================================
+// TURNERA - PANEL DE GESTIÓN (médico o admin)
+// ============================================================
+
+// GET /api/estadisticas - Demanda, ocupación, ausentismo y uso de la autogestión
+// NO va por tiempo real: son métricas de gestión y un retraso de 30 s es
+// irrelevante para decidir. Va por REST, que es exactamente lo que pide
+// la guía cuando el usuario no notaría la diferencia.
+$router->get('/api/estadisticas', function () use ($estadisticaService, $authService, $authMiddleware) {
+    $authMiddleware->verificarToken();
+    $controller = new EstadisticaController($estadisticaService, $authService);
+    $controller->index();
+});
+
+// ============================================================
+// TURNERA - GESTIÓN DEL CATÁLOGO (solo admin)
+// ============================================================
+
+// POST /api/especialidades - Crear especialidad
+$router->post('/api/especialidades', function () use ($especialidadService, $authService, $authMiddleware) {
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['admin']);
+    $controller = new EspecialidadController($especialidadService, $authService);
+    $controller->store();
+});
+
+// PUT/PATCH /api/especialidades/{id} - Actualizar especialidad
+$router->put('/api/especialidades/{id}', function ($id) use ($especialidadService, $authService, $authMiddleware) {
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['admin']);
+    $controller = new EspecialidadController($especialidadService, $authService);
+    $controller->update((int) $id);
+});
+
+$router->patch('/api/especialidades/{id}', function ($id) use ($especialidadService, $authService, $authMiddleware) {
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['admin']);
+    $controller = new EspecialidadController($especialidadService, $authService);
+    $controller->update((int) $id);
+});
+
+// DELETE /api/especialidades/{id} - Eliminar especialidad
+$router->delete('/api/especialidades/{id}', function ($id) use ($especialidadService, $authService, $authMiddleware) {
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['admin']);
+    $controller = new EspecialidadController($especialidadService, $authService);
+    $controller->destroy((int) $id);
 });
 
 // ============================================================

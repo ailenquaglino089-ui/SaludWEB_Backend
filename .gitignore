@@ -9,3 +9,8 @@ composer.phar
 # Sistema
 *.log
 Thumbs.db
+
+# Utilidades locales de desarrollo
+# Enumera emails y roles de todos los usuarios: nunca debe subirse al repositorio
+# ni quedar en un servidor. Va en .gitignore justamente para que no se cuelgue solo.
+listar_usuarios.php
