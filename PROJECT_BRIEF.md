@@ -6,7 +6,7 @@
 | **Materia** | Programación IV |
 | **Equipo** | Equipo SaludWEB (Ailen Quaglino) |
 | **Fecha de emisión** | 22/09/2026 |
-| **Estado** | Versión 1.0 — entregado para aprobación |
+| **Estado** | Versión 1.1 — lista para entrega final (29/09/2026) |
 | **Repos** | `SaludWEB_Backend` (API REST), `SaludWEB_Web` (SPA React), `SaludWEB_Mobile` (app móvil) |
 
 ---
@@ -88,10 +88,12 @@ autenticación, Rate Limiter.
 
 ## 7. Entregables
 
-- Repositorios con código fuente (Backend, Web, Mobile) y rama `dev`.
-- **Project Brief** (este documento).
-- **Agenda de Trabajo** (`AGENDA_DE_TRABAJO.md`).
-- Aplicación funcional verificada en vivo (endpoints probados con HTTP).
+- Repositorios con código fuente (Backend, Web, Mobile) con rama `dev` e integración a `main`.
+- **Project Brief** (este documento) y **Agenda de Trabajo** (`AGENDA_DE_TRABAJO.md`).
+- Aplicación funcional verificada en vivo (endpoints probados con HTTP y suites `probar_*.php`).
+- Módulos adicionales del ciclo final: **turnera** (agenda, reserva, mis turnos, estados),
+  **gestión de roles desde la Web** (pantalla Usuarios), **PWA** (instalable + arranque
+  offline del caparazón), **biometría** y **SSO** en la app mobile.
 
 ## 8. Riesgos principales
 

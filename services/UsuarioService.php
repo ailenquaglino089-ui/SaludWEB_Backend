@@ -99,7 +99,26 @@ class UsuarioService
             throw new \InvalidArgumentException('El rol indicado no existe', 422);
         }
 
-        return $this->repo->obtenerPaginado($pagina, $porPagina, $busqueda, $rol);
+        $paginado = $this->repo->obtenerPaginado($pagina, $porPagina, $busqueda, $rol);
+
+        // Cada fila pasa por enriquecer() antes de salir.
+        //
+        // El listado necesita lo mismo que devuelve cambiarRol() (vinculado y
+        // nota_vinculacion), porque la pantalla de permisos muestra, en cada
+        // fila, si la cuenta puede operar y por qué no. Sin esto el listado
+        // devolvía usuarios sin ese dato y la columna de avisos salía vacía
+        // para todos, que se lee como "nadie tiene problemas" cuando en
+        // realidad es que el dato no viaja.
+        //
+        // Se enriquece acá y no dentro del repositorio porque son datos
+        // DERIVADOS de una regla de negocio, no una consulta más: el
+        // repositorio no debe saber qué rol necesita ficha para funcionar.
+        $paginado['items'] = array_map(
+            fn (array $usuario): array => $this->enriquecer($usuario),
+            $paginado['items']
+        );
+
+        return $paginado;
     }
 
     /**
