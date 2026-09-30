@@ -97,9 +97,10 @@ profesor y quede registro del estado de cada tarea.
 | N° | Actividad | Responsable | Inicio | Fin | Estado |
 | --- | --- | --- | --- | --- | --- |
 | H1 | PWA: `manifest.webmanifest`, íconos (PNG 192/512 + apple-touch-icon) y meta de instalación en `index.html` | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
-| H2 | Service Worker (`public/sw.js`) en producción: caparazón en caché, navegación red primero → copia local offline, assets con hash caché primero y refresh en segundo plano. **Se excluye `/api` de la caché por diseño** (datos clínicos siempre frescos) | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado (validación estructural y de `dist/`; verificación visual en navegador queda para E3/defensa) |
+| H2 | Service Worker (`public/sw.js`) en producción: caparazón en caché, navegación red primero → copia local offline, assets con hash caché primero y refresh en segundo plano. **Se excluye `/api` de la caché por diseño** (datos clínicos siempre frescos) | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado — verificado en navegador real con Playwright (`verificar_pwa.mjs`, 12/12: instalabilidad, SW activo, arranque offline, aviso "sin conexión" y `/api` fuera de caché) |
 | H3 | Registrar el Service Worker solo en build (`import.meta.env.PROD`), sin dependencias nuevas (sin workbox ni vite-plugin-pwa) | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
 | H4 | Robustez offline en la UI: aviso global "Sin conexión" (`AvisoOffline`) impulsado por los eventos del navegador Y por las peticiones sin respuesta del cliente API; errores de red traducidos a mensajes en español | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
+| H5 | Verificación E2E en navegador real: `verificar_pwa.mjs` (Playwright, `playwright` como devDependency) — manifest, íconos, SW activo/controlador, offline con caparazón en caché, aviso visible y caída de `/api` fuera de caché | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado (12/12) |
 
 ---
 
