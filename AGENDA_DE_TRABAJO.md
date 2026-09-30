@@ -6,7 +6,7 @@
 | **Materia** | Programación IV |
 | **Equipo** | Equipo SaludWEB (Ailen Quaglino) |
 | **Fecha de emisión** | 22/09/2026 |
-| **Estado** | En curso — próximos hitos: Pruebas Mobile y entrega final |
+| **Estado** | En curso — hasta hoy: módulos y pruebas integrales de Backend+Web preparadas; restan pruebas en emulador/dispositivo y la fecha de entrega |
 | **Última actualización** | 29/09/2026 |
 
 > Las fechas son propuestas y ajustables. Se marca el avance real hasta hoy.
@@ -78,9 +78,9 @@ profesor y quede registro del estado de cada tarea.
 
 | N° | Actividad | Responsable | Inicio | Fin | Estado |
 | --- | --- | --- | --- | --- | --- |
-| F1 | Pruebas integrales (Backend + Web + Mobile) | Equipo | 07/10/2026 | 09/10/2026 | ⏳ Pendiente |
-| F2 | Ajustes finales y revisión de reglas de negocio | Equipo | 12/10/2026 | 13/10/2026 | ⏳ Pendiente |
-| F3 | Actualización de documentación y merge `dev → main` | Equipo | 14/10/2026 | 15/10/2026 | ⏳ Pendiente |
+| F1 | Pruebas integrales (Backend + Web + Mobile) | Equipo | 07/10/2026 | 29/09/2026 | ✔ Preparado en dev: suites `probar_roles.php`, `probar_roles_http.php`, `probar_vinculacion.php` (15/15), `probar_turnera.php` y `verificar_turnera.php` pasan; reglas de negocio verificadas por HTTP real (403 a paciente en `/usuarios`, `/medicos`, `/prescripciones`); auditorías Web (variables 0 rotas, contraste 0 problemas). Queda la E2E en emulador/dispositivo (E3) y la verificación PWA en navegador |
+| F2 | Ajustes finales y revisión de reglas de negocio | Equipo | 12/10/2026 | 29/09/2026 | ✔ Completado (lista de la sección 5 verificada) |
+| F3 | Actualización de documentación y merge `dev → main` | Equipo | 14/10/2026 | 29/09/2026 | ✔ Completado (docs actualizadas y merge ejecutado en los 3 repos) |
 | F4 | Entrega final y defensa | Equipo | 16/10/2026 | 16/10/2026 | ⏳ Pendiente |
 
 ### Fase G — Roles y permisos desde la Web
@@ -97,8 +97,9 @@ profesor y quede registro del estado de cada tarea.
 | N° | Actividad | Responsable | Inicio | Fin | Estado |
 | --- | --- | --- | --- | --- | --- |
 | H1 | PWA: `manifest.webmanifest`, íconos (PNG 192/512 + apple-touch-icon) y meta de instalación en `index.html` | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
-| H2 | Service Worker (`public/sw.js`) en producción: caparazón en caché, navegación red primero → copia local offline, assets con hash caché primero y refresh en segundo plano. **Se excluye `/api` de la caché por diseño** (datos clínicos siempre frescos) | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado (verificación en navegador pendiente en F1) |
+| H2 | Service Worker (`public/sw.js`) en producción: caparazón en caché, navegación red primero → copia local offline, assets con hash caché primero y refresh en segundo plano. **Se excluye `/api` de la caché por diseño** (datos clínicos siempre frescos) | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado (validación estructural y de `dist/`; verificación visual en navegador queda para E3/defensa) |
 | H3 | Registrar el Service Worker solo en build (`import.meta.env.PROD`), sin dependencias nuevas (sin workbox ni vite-plugin-pwa) | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
+| H4 | Robustez offline en la UI: aviso global "Sin conexión" (`AvisoOffline`) impulsado por los eventos del navegador Y por las peticiones sin respuesta del cliente API; errores de red traducidos a mensajes en español | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
 
 ---
 
@@ -116,6 +117,9 @@ profesor y quede registro del estado de cada tarea.
 | SSO (Google / Microsoft) implementado en Mobile + Backend (`/api/auth/sso`) | 24/09/2026 ✔ |
 | Módulo de roles en la Web (pantalla Usuarios + carteles de permiso + datos ficticios de demo) | 29/09/2026 ✔ |
 | PWA: instalable + arranque offline (manifest, service worker, íconos) | 29/09/2026 ✔ |
+| Robustez offline: aviso global "Sin conexión" en la Web | 29/09/2026 ✔ |
+| Pruebas integrales de Backend registradas (suites `probar_*` + reglas por HTTP) | 29/09/2026 ✔ |
+| Integración `dev → main` en los 3 repositorios | 29/09/2026 ✔ |
 | Aplicación Mobile funcional | 06/10/2026 |
 | Pruebas integrales finalizadas | 09/10/2026 |
 | Docs finales + merge a `main` | 15/10/2026 |
