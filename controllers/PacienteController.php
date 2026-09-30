@@ -56,12 +56,16 @@ class PacienteController
     {
         // Bloque try del alta de un paciente
         try {
-            // Lee el cuerpo JSON de la petición y lo convierte en array; si falla usa null
-            $data = json_decode(file_get_contents('php://input'), true);
-            // Delega en el servicio la validación y creación (?? [] evita pasar null)
-            $paciente = $this->service->crear($data ?? []);
+            // Lee el cuerpo JSON de la petición; CuerpoJson rechaza un cuerpo
+            // vacío o mal formado con un 400
+            $data = CuerpoJson::leer();
+            // Delega en el servicio la validación y creación
+            $paciente = $this->service->crear($data);
             // Responde 201 Created con JSON consistente y el paciente recién creado
             Response::ok($paciente, 'Paciente creado correctamente', 201);
+        } catch (\RuntimeException $e) {
+            // 400: el cuerpo no es un objeto JSON válido
+            Response::error($e->getMessage(), $e->getCode() ?: 400);
         } catch (\InvalidArgumentException $e) {
             // Captura errores de validación de entrada: HTTP 422 Unprocessable Entity
             Response::error($e->getMessage(), $e->getCode() ?: 422);
@@ -80,14 +84,14 @@ class PacienteController
         // Bloque try de la actualización
         try {
             // Lee el cuerpo JSON de la petición (campos a modificar)
-            $data = json_decode(file_get_contents('php://input'), true);
+            $data = CuerpoJson::leer();
             // Delega en el servicio la actualización del paciente con los datos enviados
-            $paciente = $this->service->actualizar($id, $data ?? []);
+            $paciente = $this->service->actualizar($id, $data);
             // Responde 200 OK con el paciente actualizado
             Response::ok($paciente, 'Paciente actualizado correctamente');
         } catch (\RuntimeException $e) {
-            // Captura el caso de paciente inexistente: HTTP 404 Not Found
-            Response::error($e->getMessage(), 404);
+            // 400 si el cuerpo está mal formado; 404 si el paciente no existe
+            Response::error($e->getMessage(), $e->getCode() ?: 404);
         } catch (\InvalidArgumentException $e) {
             // Captura errores de validación: HTTP 422 Unprocessable Entity
             Response::error($e->getMessage(), $e->getCode() ?: 422);

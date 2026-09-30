@@ -101,6 +101,21 @@ class AuthService
             $tipoUsuario = 'paciente';
         }
 
+        // --------------------------------------------------
+        // Vínculo con la ficha: SIEMPRE nulo en el registro
+        // --------------------------------------------------
+        // Antes este endpoint aceptaba id_paciente e id_medico del body, y
+        // los guardaba sin validar. Eso era un agujero: cualquiera que se
+        // registrara podía vincular su cuenta con la ficha de otro paciente y
+        // ver o cancelar sus turnos.
+        //
+        // Ahora el vínculo se hace en un paso aparte y verificado
+        // (POST /api/auth/vincular, con DNI o matrícula). Es más seguro y
+        // además tiene sentido de negocio: la cuenta se crea al instante,
+        // pero el vínculo con la ficha lo confirma quien la cargó.
+        $idPaciente = null;
+        $idMedico = null;
+
         // Insertar el nuevo usuario
         // Prepara el INSERT parametrizado (anti inyección SQL); "activo" se fija en 1
         $stmt = $this->pdo->prepare(
@@ -113,8 +128,8 @@ class AuthService
             $passwordHash,
             $nombre,
             $tipoUsuario,
-            $data['id_paciente'] ?? null,
-            $data['id_medico'] ?? null
+            $idPaciente,
+            $idMedico
         ]);
 
         // Obtiene el ID autogenerado por MySQL para el registro recién insertado
@@ -476,5 +491,395 @@ class AuthService
         $stmt = $this->pdo->prepare("UPDATE usuarios SET password = ? WHERE id = ?");
         // Ejecuta la actualización y retorna true si se afectó al menos una fila
         return $stmt->execute([$newHash, $id]);
+    }
+
+    /**
+     * Arma el contexto de la petición a partir del token ya verificado.
+     *
+     * MOTIVO DE EXISTIR (módulo "Sistema de gestión de citas online"):
+     * el JWT lleva 'sub' (id del usuario), 'rol' y 'email', pero NO lleva
+     * id_paciente ni id_medico. Esos vínculos viven en la tabla usuarios y
+     * hacen falta para autorizar sobre datos clínicos ("¿este turno es de
+     * este paciente?"). Centralizarlo acá evita que cada controlador haga
+     * su propia consulta y, sobre todo, evita que uno se olvide de validar.
+     *
+     * @return array ['rol', 'id_usuario', 'id_paciente', 'id_medico']
+     * @throws RuntimeException Si el token no se verificó o el usuario no existe
+     */
+    public function contextoDePeticion(): array
+    {
+        // Se toma el payload que AuthMiddleware::verificarToken() ya validó
+        $payload = AuthMiddleware::usuarioActual();
+
+        // Si está vacío, significa que la ruta no pasó por verificarToken():
+        // es un error de ruteo, no del usuario. 401 igual, para no filtrar.
+        if (empty($payload)) {
+            throw new \RuntimeException('Sesión no verificada', 401);
+        }
+
+        // Se resuelve el usuario una sola vez para traer los vínculos
+        $usuario = $this->obtenerPorId((int)($payload['sub'] ?? 0));
+
+        return [
+            // El rol sale del token firmado: es lo único que no se puede falsear
+            'rol' => $payload['rol'] ?? $usuario['tipo_usuario'] ?? 'paciente',
+            'id_usuario' => (int)($payload['sub'] ?? 0),
+            // Vínculos con la entidad, resueltos desde la base
+            'id_paciente' => $usuario['id_paciente'] !== null ? (int)$usuario['id_paciente'] : null,
+            'id_medico' => $usuario['id_medico'] !== null ? (int)$usuario['id_medico'] : null,
+        ];
+    }
+
+    /**
+     * Vincula la cuenta del usuario con su ficha de paciente o de médico.
+     *
+     * POR QUÉ EXISTE (módulo "Sistema de gestión de citas online")
+     * Para reservar un turno, el sistema tiene que saber a QUIÉN se le
+     * reserva. La tabla usuarios guarda email y contraseña; la tabla
+     * pacientes guarda DNI y nombre. Son datos distintos, y una cuenta
+     * puede existir sin ficha vinculada.
+     *
+     * Sin este paso, un paciente que se registra no podría sacar turno
+     * ("no estás vinculado a una ficha de paciente"), que es exactamente
+     * el tipo de mensaje que hace abandonar el sistema.
+     *
+     * CÓMO SE VERIFICA QUE ES SU FICHA
+     *   paciente → DNI + coincidencia del nombre
+     *   médico   → número de matrícula profesional
+     * No se acepta un id suelto: si se aceptara, cualquiera podría vincularse
+     * a la ficha de otro y ver sus turnos. El DNI solo no alcanza como
+     * "contraseña" en un sistema real (en producción debería ir un código
+     * por SMS o email); se refuerza comparando también el nombre, y por eso
+     * está documentado como limitación consciente.
+     *
+     * @param int $idUsuario Usuario al que se vincula
+     * @param string $tipo 'paciente' o 'medico'
+     * @param string $documento DNI (paciente) o matrícula (médico)
+     * @return array El usuario actualizado
+     * @throws InvalidArgumentException Si el documento no coincide o ya está usado
+     * @throws RuntimeException Si el usuario no existe
+     */
+    public function vincularEntidad(int $idUsuario, string $tipo, string $documento): array
+    {
+        // Se limpia el documento de espacios exteriores
+        $documento = trim($documento);
+
+        // El tipo tiene que ser uno de los dos previstos
+        if (!in_array($tipo, ['paciente', 'medico'], true)) {
+            throw new \InvalidArgumentException('Tipo de vinculación no válido', 422);
+        }
+
+        // Sin documento no hay nada con qué verificar la identidad
+        if ($documento === '') {
+            throw new \InvalidArgumentException('Debe indicar el documento de verificación', 422);
+        }
+
+        // Se verifica que el usuario exista y esté activo
+        $usuario = $this->obtenerPorId($idUsuario);
+        if (empty($usuario['activo'])) {
+            throw new \RuntimeException('La cuenta está desactivada', 403);
+        }
+
+        // --------------------------------------------------
+        // EL TIPO DE LA CUENTA TIENE QUE COINCIDIR CON LA FICHA
+        // --------------------------------------------------
+        // Sin esta comprobación, una cuenta de paciente podría vincularse a
+        // id_medico y una cuenta de médico a id_paciente, invadiendo un rol
+        // que no les corresponde. El rol del token no se recalcula después,
+        // así que hoy el daño es indirecto, pero deja la puerta abierta a que
+        // un cambio futuro en el manejo de roles convierta esto en una escalada
+        // de privilegios. Se cierra acá, que es el único lugar que escribe el
+        // vínculo.
+        if (($usuario['tipo_usuario'] ?? null) !== $tipo) {
+            throw new \InvalidArgumentException(
+                'Esta cuenta es de tipo ' . ($usuario['tipo_usuario'] ?? 'desconocido')
+                . ' y no puede vincularse a una ficha de ' . $tipo,
+                422
+            );
+        }
+
+        if ($tipo === 'paciente') {
+            return $this->vincularPaciente($usuario, $documento);
+        }
+
+        return $this->vincularMedico($usuario, $documento);
+    }
+
+    /**
+     * Vincula un usuario con su ficha de paciente verificando DNI y nombre
+     * @param array $usuario Fila del usuario ya obtenida
+     * @param string $dni DNI informado
+     * @return array El usuario actualizado
+     */
+    private function vincularPaciente(array $usuario, string $dni): array
+    {
+        // Se busca al paciente por DNI (el índice uniq_dni hace la búsqueda directa)
+        $stmt = $this->pdo->prepare("SELECT * FROM pacientes WHERE dni = ? LIMIT 1");
+        $stmt->execute([$dni]);
+        $paciente = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // Si no existe una ficha con ese DNI, el mensaje es el mismo que si
+        // existiera pero fuera de otro: no se confirma la existencia de fichas
+        if (!$paciente) {
+            throw new \InvalidArgumentException(
+                'No encontramos una ficha de paciente con ese DNI y nombre. '
+                . 'Verificá los datos o pedí ayuda en recepción.',
+                422
+            );
+        }
+
+        // El paciente tiene que estar dado de alta: vincular una ficha baja
+        // serviría solo para generar un error más adelante
+        if (empty($paciente['activo'])) {
+            throw new \InvalidArgumentException('Esa ficha de paciente está dada de baja', 422);
+        }
+
+        // Se comparan los nombres sin tildes, mayúsculas ni espacios, porque
+        // "José Pérez" y "jose  perez " tienen que ser la misma persona.
+        // La función_quita_acentos() de más abajo hace esa normalización.
+        $nombreFicha = $this->normalizarTexto((string)$paciente['nombre']);
+        $nombreUsuario = $this->normalizarTexto((string)$usuario['nombre']);
+
+        // Se compara solo el primer apellido/apellido compuesto: el paciente
+        // puede haberse registrado con "Juan Pérez" y la ficha tener
+        // "Juan Pérez González", y eso no debería bloquearle el acceso.
+        $coincide = $this->coincidenNombres($nombreUsuario, $nombreFicha);
+        if (!$coincide) {
+            throw new \InvalidArgumentException(
+                'El nombre de la cuenta no coincide con el de la ficha del DNI',
+                422
+            );
+        }
+
+        // Una ficha no puede quedar ligada a dos cuentas distintas: si lo
+        // estuviera, dos personas podrían ver y cancelar los mismos turnos
+        if ($paciente['id'] !== null && !empty($usuario['id_paciente']) && (int)$usuario['id_paciente'] !== (int)$paciente['id']) {
+            throw new \InvalidArgumentException('Tu cuenta ya está vinculada a otra ficha de paciente', 409);
+        }
+
+        // Se comprueba que esa ficha no esté ya en uso por otra cuenta
+        $stmt = $this->pdo->prepare("SELECT id FROM usuarios WHERE id_paciente = ? AND id <> ? LIMIT 1");
+        $stmt->execute([(int)$paciente['id'], (int)$usuario['id']]);
+        if ($stmt->fetch()) {
+            throw new \InvalidArgumentException('Esa ficha de paciente ya está vinculada a otra cuenta', 409);
+        }
+
+        // Se guarda el vínculo
+        $stmt = $this->pdo->prepare("UPDATE usuarios SET id_paciente = ? WHERE id = ?");
+        $stmt->execute([(int)$paciente['id'], (int)$usuario['id']]);
+
+        return $this->obtenerPorId((int)$usuario['id']);
+    }
+
+    /**
+     * Vincula un usuario con su ficha de médico verificando la matrícula
+     * @param array $usuario Fila del usuario ya obtenida
+     * @param string $matricula Matricula informada
+     * @return array El usuario actualizado
+     */
+    private function vincularMedico(array $usuario, string $matricula): array
+    {
+        // La búsqueda por matrícula no tiene índice propio en el esquema, así
+        // que se hace con una consulta directa en vez de agregar un índice nuevo
+        // para un caso que solo ocurre al vincular la cuenta, una sola vez
+        $stmt = $this->pdo->prepare("SELECT * FROM medicos WHERE matricula = ? LIMIT 1");
+        $stmt->execute([$matricula]);
+        $medico = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$medico) {
+            throw new \InvalidArgumentException('No encontramos un profesional con esa matrícula', 422);
+        }
+
+        // Un profesional dado de baja no puede publicar agenda ni atender
+        if (empty($medico['activo'])) {
+            throw new \InvalidArgumentException('Ese profesional está dado de baja', 422);
+        }
+
+        // Se comprueba que la ficha no esté ya en uso por otra cuenta
+        $stmt = $this->pdo->prepare("SELECT id FROM usuarios WHERE id_medico = ? AND id <> ? LIMIT 1");
+        $stmt->execute([(int)$medico['id'], (int)$usuario['id']]);
+        if ($stmt->fetch()) {
+            throw new \InvalidArgumentException('Esa ficha de profesional ya está vinculada a otra cuenta', 409);
+        }
+
+        // Se guarda el vínculo
+        $stmt = $this->pdo->prepare("UPDATE usuarios SET id_medico = ? WHERE id = ?");
+        $stmt->execute([(int)$medico['id'], (int)$usuario['id']]);
+
+        return $this->obtenerPorId((int)$usuario['id']);
+    }
+
+    /**
+     * Normaliza un texto para comparar nombres: minúsculas y sin tildes
+     * @param string $texto Texto a normalizar
+     * @return string Texto comparable
+     */
+    private function normalizarTexto(string $texto): string
+    {
+        // mb_strtolower resuelve el problema clásico de PHP: strtolower() no
+        // distingue bien mayúsculas acentuadas en cadenas UTF-8
+        $texto = mb_strtolower(trim($texto), 'UTF-8');
+
+        // Se reemplaza cada vocal acentuada por su versión sin acento. Se
+        // hace con una tabla de sustitución porque no hay una función nativa
+        // que quite diacríticos en PHP.
+        $conAcentos = ['á', 'é', 'í', 'ó', 'ú', 'ü', 'ñ', 'Á', 'É', 'Í', 'Ó', 'Ú', 'Ü', 'Ñ'];
+        $sinAcentos = ['a', 'e', 'i', 'o', 'u', 'u', 'n', 'a', 'e', 'i', 'o', 'u', 'u', 'n'];
+        $texto = str_replace($conAcentos, $sinAcentos, $texto);
+
+        // Se colapsan los espacios repetidos: "jose  perez" = "jose perez"
+        $texto = preg_replace('/\s+/', ' ', $texto);
+
+        return trim((string)$texto);
+    }
+
+    /**
+     * Verifica si dos nombres normalizados pueden referirse a la misma persona.
+     *
+     * La comparación es deliberadamente tolerante con los segundos apellidos
+     * y con el orden de las palabras (la ficha puede traer "Apellido, Nombre",
+     * "Nombre Apellido" o más de un apellido), pero EXIGE que coincidan al
+     * menos dos palabras y que el nombre más corto esté contenido en el otro.
+     * Comparar solo el nombre de pila dejaría abierta la vía de vincular la
+     * ficha de otra persona que se llamara igual: no haría falta conocer el
+     * DNI ajeno, solo adivinar un nombre de uso común.
+     *
+     * @param string $nombreCuenta Nombre normalizado de la cuenta
+     * @param string $nombreFicha Nombre normalizado de la ficha
+     * @return bool True si se consideran el mismo nombre
+     */
+    private function coincidenNombres(string $nombreCuenta, string $nombreFicha): bool
+    {
+        // Si son idénticos, listo
+        if ($nombreCuenta === $nombreFicha) {
+            return true;
+        }
+
+        // La base de datos guarda los nombres del paciente en formato
+        // "Apellido, Nombre" (ej: "Sánchez, Laura"), que es el orden de un
+        // padrón o un documento. Antes de comparar, se invierte ese formato
+        // para dejar ambos textos en el mismo orden ("laura sanchez").
+        $nombreFicha = $this->invertirApellidoNombre($nombreFicha);
+
+        // Se vuelve a comparar por si coincidían solo al invertir el formato
+        if ($nombreCuenta === $nombreFicha) {
+            return true;
+        }
+
+        // Se separa cada nombre en palabras comparables, en minúsculas y sin
+        // acentos, para comparar palabra por palabra en vez de comparar el
+        // texto entero. Se reaprovecha normalizarTexto(), que ya resuelve
+        // el caso de las mayúsculas acentuadas y de la ñ.
+        $palabrasCuenta = $this->palabrasSignificativas($nombreCuenta);
+        $palabrasFicha = $this->palabrasSignificativas($nombreFicha);
+
+        // Si alguno quedó vacío, no hay nada con qué comparar
+        if (count($palabrasCuenta) === 0 || count($palabrasFicha) === 0) {
+            return false;
+        }
+
+        // --------------------------------------------------------
+        // REGLA: dos palabras en común y el nombre corto contenido en el largo
+        // --------------------------------------------------------
+        // Comparar solo el nombre de pila ("Laura") abriría una vía clara para
+        // vincular la ficha de otra persona: alcanzaría con adivinar un nombre
+        // de uso común, sin necesidad de conocer el DNI ajeno. Por eso se
+        // exigen DOS palabras coincidentes: en la práctica, nombre y apellido.
+        //
+        // Se comparan conjuntos y no el texto exacto porque los nombres reales
+        // vienen con segundos apellidos de un lado y no del otro ("Sánchez,
+        // Laura" en la ficha, "Laura Sánchez González" en la cuenta) y a veces
+        // sin coma separando apellido y nombre, que es un orden que no se
+        // puede asumir. Al mirar conjuntos el orden deja de importar.
+        $comunes = array_intersect($palabrasCuenta, $palabrasFicha);
+
+        // Menos de dos palabras en común significa que no hay nombre + apellido
+        if (count($comunes) < 2) {
+            return false;
+        }
+
+        // Se exige además que el nombre más corto esté contenido en el largo.
+        // Esto evita el falso positivo de dos personas distintas que comparten
+        // una palabra: "Laura Sánchez" y "Laura Andrea" comparten "laura" y
+        // "laura" nada más, y ya se rechazaron; el caso difícil es cuando
+        // comparten dos palabras pero difieren en un tercero, como
+        // "Sánchez, Laura" contra "Sánchez, Laura Beatriz": aquí el nombre
+        // corto está contenido en el largo, que es lo que se busca.
+        $corto = count($palabrasCuenta) <= count($palabrasFicha) ? $palabrasCuenta : $palabrasFicha;
+        $largo = count($palabrasCuenta) <= count($palabrasFicha) ? $palabrasFicha : $palabrasCuenta;
+
+        return count(array_diff($corto, $largo)) === 0;
+    }
+
+    /**
+     * Separa un nombre en palabras comparables
+     *
+     * Deja el texto en minúsculas y sin tildes, descarta las palabras de
+     * enlace que no identifican a nadie ("de", "del", "la", "los", "y") y
+     * quita las palabras de menos de dos letras, que suelen ser iniciales
+     * sueltas y no sirven para comparar.
+     *
+     * @param string $nombre Nombre ya normalizado
+     * @return array Lista de palabras significativas
+     */
+    private function palabrasSignificativas(string $nombre): array
+    {
+        // Palabras que no distinguen a una persona de otra
+        $conjunciones = ['de', 'del', 'la', 'las', 'los', 'y', 'da', 'das', 'dos'];
+
+        // Se separa por espacios
+        $piezas = preg_split('/\s+/', trim($nombre), -1, PREG_SPLIT_NO_EMPTY);
+
+        $resultado = [];
+        foreach ($piezas as $pieza) {
+            // Se normaliza cada palabra por separado: "Sánchez" y "Sanchez"
+            // tienen que comparar igual, que es la diferencia entre un
+            // paciente que logra vincularse y otro que no por escribir su
+            // nombre sin tilde
+            $normalizada = $this->normalizarTexto($pieza);
+
+            // Se descartan conjunciones y palabras demasiado cortas
+            if (mb_strlen($normalizada, 'UTF-8') < 2 || in_array($normalizada, $conjunciones, true)) {
+                continue;
+            }
+
+            $resultado[] = $normalizada;
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * Convierte "apellido, nombre" en "nombre apellido"
+     *
+     * Necesario porque la tabla pacientes guarda los nombres así, mientras
+     * que el usuario se registra escribiendo "Nombre Apellido". Sin esta
+     * conversión, el paciente que se registra con su nombre natural no
+     * podría vincularse nunca con su propia ficha.
+     *
+     * @param string $nombre Nombre normalizado
+     * @return string Nombre en orden "nombre apellido"
+     */
+    private function invertirApellidoNombre(string $nombre): string
+    {
+        // Si no hay coma, el nombre ya está en orden natural
+        if (strpos($nombre, ',') === false) {
+            return $nombre;
+        }
+
+        // Se separa en las dos partes de la coma
+        $partes = explode(',', $nombre, 2);
+
+        // Se limpian los espacios que quedaron alrededor de la coma
+        $apellido = trim($partes[0]);
+        $resto = trim($partes[1]);
+
+        // Si alguna parte quedó vacía, se devuelve el nombre original
+        if ($apellido === '' || $resto === '') {
+            return $nombre;
+        }
+
+        // Se devuelve en orden "nombre apellido"
+        return $resto . ' ' . $apellido;
     }
 }

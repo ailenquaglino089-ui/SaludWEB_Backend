@@ -69,12 +69,16 @@ class PrescripcionController
     {
         // Bloque try del alta de una prescripción
         try {
-            // Lee el cuerpo JSON de la petición y lo convierte en array; si falla usa null
-            $data = json_decode(file_get_contents('php://input'), true);
-            // Delega en el servicio la validación y creación (?? [] evita pasar null)
-            $prescripcion = $this->service->crear($data ?? []);
+            // Lee el cuerpo JSON de la petición; CuerpoJson rechaza un cuerpo
+            // vacío o mal formado con un 400
+            $data = CuerpoJson::leer();
+            // Delega en el servicio la validación y creación
+            $prescripcion = $this->service->crear($data);
             // Responde 201 Created con JSON consistente y la prescripción recién creada
             Response::ok($prescripcion, 'Prescripción creada correctamente', 201);
+        } catch (\RuntimeException $e) {
+            // 400: el cuerpo no es un objeto JSON válido
+            Response::error($e->getMessage(), $e->getCode() ?: 400);
         } catch (\InvalidArgumentException $e) {
             // Captura errores de validación de entrada: HTTP 422 Unprocessable Entity
             Response::error($e->getMessage(), $e->getCode() ?: 422);
@@ -93,14 +97,14 @@ class PrescripcionController
         // Bloque try de la actualización
         try {
             // Lee el cuerpo JSON de la petición (campos a modificar)
-            $data = json_decode(file_get_contents('php://input'), true);
+            $data = CuerpoJson::leer();
             // Delega en el servicio la actualización de la prescripción con los datos enviados
-            $prescripcion = $this->service->actualizar($id, $data ?? []);
+            $prescripcion = $this->service->actualizar($id, $data);
             // Responde 200 OK con la prescripción actualizada
             Response::ok($prescripcion, 'Prescripción actualizada correctamente');
         } catch (\RuntimeException $e) {
-            // Captura el caso de prescripción inexistente: HTTP 404 Not Found
-            Response::error($e->getMessage(), 404);
+            // 400 si el cuerpo está mal formado; 404 si la prescripción no existe
+            Response::error($e->getMessage(), $e->getCode() ?: 404);
         } catch (\InvalidArgumentException $e) {
             // Captura errores de validación: HTTP 422 Unprocessable Entity
             Response::error($e->getMessage(), $e->getCode() ?: 422);
@@ -141,7 +145,7 @@ class PrescripcionController
         // Bloque try del cambio de estado
         try {
             // Lee el cuerpo JSON de la petición (campo "estado")
-            $data = json_decode(file_get_contents('php://input'), true);
+            $data = CuerpoJson::leer();
             // Valida que el cliente haya enviado el nuevo estado
             if (empty($data['estado'])) {
                 // HTTP 422: el estado es un campo obligatorio
@@ -152,8 +156,8 @@ class PrescripcionController
             // Responde 200 OK con la prescripción actualizada
             Response::ok($prescripcion, 'Estado actualizado correctamente');
         } catch (\RuntimeException $e) {
-            // Captura el caso de prescripción inexistente: HTTP 404 Not Found
-            Response::error($e->getMessage(), 404);
+            // 400 si el cuerpo está mal formado; 404 si la prescripción no existe
+            Response::error($e->getMessage(), $e->getCode() ?: 404);
         } catch (\InvalidArgumentException $e) {
             // Captura estados no permitidos: HTTP 422 Unprocessable Entity
             Response::error($e->getMessage(), 422);

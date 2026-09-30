@@ -174,6 +174,193 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     // ============================================================
+    // MÓDULO TURNERA: GESTIÓN DE CITAS ONLINE
+    // ------------------------------------------------------------
+    // Objetivo: permitir que el paciente reserve, modifique y cancele
+    // consultas desde la web o el celular, sin filas presenciales ni
+    // llamados telefónicos, y que el profesional vea una agenda unificada
+    // sin superposiciones.
+    //
+    // Las cuatro tablas de abajo usan una técnica de concurrencia
+    // importante que conviene leer antes de tocar el SQL:
+    //
+    //   UNIQUE (id_medico, fecha, hora, slot_reservado)
+    //
+    // MySQL NO tiene índices "parciales" (no se puede indexar solo las filas
+    // que cumplen una condición), y en un índice UNIQUE los valores NULL
+    // NO se consideran duplicados entre sí. Por eso la cuarta columna,
+    // slot_reservado, vale 'reservado' mientras la cita está activa
+    // (pendiente/confirmada/completada) y se pone en NULL cuando la cita
+    // se cancela o el paciente no asiste.
+    //
+    // Consecuencia: el par (médico, fecha, hora) solo puede estar ocupado
+    // por UNA cita viva, y al cancelar se liberan todas las horas posibles
+    // del mismo horario sin chocar con el índice. Esa es la garantía de
+    // que no se pueden superponer dos pacientes en el mismo consultorio.
+    // ============================================================
+
+    // Tabla: especialidades
+    // Catálogo de especialidades médicas (Ej: Medicina General, Pediatría).
+    // Existe como catálogo propio para poder agrupar, filtrar y medir
+    // demanda por especialidad sin depender de texto libre.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS especialidades (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nombre VARCHAR(100) NOT NULL,
+        activo TINYINT(1) NOT NULL DEFAULT 1,
+        creado_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_especialidad (nombre)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Tabla: disponibilidades
+    // Agenda horaria RECURRENTE del profesional: bloques de atención
+    // semanales que se repiten todas las semanas.
+    // Ej: id_medico=1, dia_semana=1..5, 08:00 a 12:00, turnos de 30 min.
+    //
+    // dia_semana usa la convención ISO-8601 de PHP: 1 = lunes ... 7 = domingo.
+    // Es la misma que devuelve date('N') y la que usa la mayoría de las
+    // librerías de calendario, así que no hay conversión al mostrar la agenda.
+    //
+    // OJO con un detalle que confunde: la función WEEKDAY() de MySQL NO usa
+    // esta numeración (ella devuelve 0 = lunes ... 6 = domingo). Si algún día
+    // se hace un cálculo del día de la semana en SQL, hay que sumar 1 o usar
+    // DAYOFWEEK() a la inversa, o el resultado va corrido un día.
+    //
+    // duracion_minutos: largo de cada turno dentro del bloque (30 por defecto).
+    // activo: permite desactivar un bloque sin borrarlo, para no perder el
+    // histórico de las citas ya tomadas en ese horario.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS disponibilidades (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        id_medico INT NOT NULL,
+        dia_semana TINYINT(1) NOT NULL,
+        hora_inicio TIME NOT NULL,
+        hora_fin TIME NOT NULL,
+        duracion_minutos INT NOT NULL DEFAULT 30,
+        activo TINYINT(1) NOT NULL DEFAULT 1,
+        creado_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (id_medico) REFERENCES medicos(id) ON DELETE CASCADE,
+        INDEX idx_disponibilidad_medico_dia (id_medico, dia_semana)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Tabla: citas
+    // Cada fila es un turno reservado entre un paciente y un profesional.
+    //
+    // estado: el ciclo de vida completo de la cita.
+    //   pendiente   → recién reservada, todavía sin confirmar
+    //   confirmada  → el paciente confirmó que va
+    //   cancelada   → se liberó (el horario vuelve a quedar disponible)
+    //   completada  → la atención se realizó
+    //   ausente     → el paciente no asistió (alimenta la tasa de ausentismo)
+    //
+    // slot_reservado: ver la explicación del índice único más arriba.
+    //   'reservado' → la cita ocupa el horario
+    //   NULL        → la cita está cancelada o el paciente faltó, el horario queda libre
+    //
+    // creado_por_paciente: guarda si la reservó el propio paciente (1) o el
+    // consultorio (0). Permite medir el uso real de la autogestión online.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS citas (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        id_paciente INT NOT NULL,
+        id_medico INT NOT NULL,
+        fecha DATE NOT NULL,
+        hora TIME NOT NULL,
+        duracion_minutos INT NOT NULL DEFAULT 30,
+        estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        motivo VARCHAR(255) NULL,
+        notas VARCHAR(500) NULL,
+        recordatorio_enviado TINYINT(1) NOT NULL DEFAULT 0,
+        creado_por_paciente TINYINT(1) NOT NULL DEFAULT 1,
+        slot_reservado VARCHAR(20) NULL DEFAULT 'reservado',
+        creado_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        actualizado_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (id_paciente) REFERENCES pacientes(id) ON DELETE CASCADE,
+        FOREIGN KEY (id_medico) REFERENCES medicos(id) ON DELETE CASCADE,
+        UNIQUE KEY uniq_slot (id_medico, fecha, hora, slot_reservado),
+        INDEX idx_citas_paciente (id_paciente, fecha),
+        INDEX idx_citas_medico_dia (id_medico, fecha),
+        INDEX idx_citas_estado_fecha (estado, fecha)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Tabla: notificaciones
+    // Capa persistida de los recordatorios anti-ausentismo.
+    //
+    // Decisión de arquitectura (módulo "Datos en Tiempo Real"):
+    //   La fuente de verdad es la tabla citas. Esta tabla NO duplica el
+    //   estado de la cita: guarda únicamente el registro de las
+    //   comunicaciones enviadas y en qué estado quedó cada una.
+    //   Nunca se escribe en esta tabla desde el cliente, y jamás se
+    //   consulta para decidir el estado de una cita: eso se lee siempre
+    //   en citas. Así se evita el antipatrón de "fuente de verdad difusa"
+    //   descrito en la guía de datos en tiempo real.
+    //
+    // tipo:   recordatorio | confirmacion | cancelacion
+    // canal:  email | whatsapp | sistema (el que se use al implementar)
+    // estado: pendiente | enviado | fallido
+    //
+    // token_cancelacion: token aleatorio y único que viaja en el enlace
+    // del recordatorio. Permite que el paciente confirme o cancele desde
+    // el mensaje sin iniciar sesión, que es justamente lo que reduce el
+    // ausentismo (si exigir login, muchos pacientes lo abandonan).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS notificaciones (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        id_cita INT NOT NULL,
+        id_usuario INT NULL,
+        tipo VARCHAR(30) NOT NULL DEFAULT 'recordatorio',
+        canal VARCHAR(20) NOT NULL DEFAULT 'sistema',
+        destino VARCHAR(255) NULL,
+        estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+        token_cancelacion VARCHAR(64) NULL,
+        intentos INT NOT NULL DEFAULT 0,
+        motivo_error VARCHAR(255) NULL,
+        enviado_at TIMESTAMP NULL DEFAULT NULL,
+        creado_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (id_cita) REFERENCES citas(id) ON DELETE CASCADE,
+        FOREIGN KEY (id_usuario) REFERENCES usuarios(id) ON DELETE SET NULL,
+        UNIQUE KEY uniq_token_cancelacion (token_cancelacion),
+        UNIQUE KEY uniq_cita_tipo_canal (id_cita, tipo, canal),
+        INDEX idx_notificaciones_estado (estado, creado_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // --------------------------------------------------
+    // MIGRACIÓN: un aviso por (cita, tipo, canal)
+    // --------------------------------------------------
+    // El índice uniq_cita_tipo_canal de arriba solo se crea junto con la tabla.
+    // En una base que ya tenía la tabla, hace falta agregarlo aparte.
+    //
+    // POR QUÉ: la generación de recordatorios revisa si la cita ya fue
+    // avisada y después inserta. Entre la consulta y la insertación hay una
+    // ventana: si dos procesos llaman al endpoint a la vez (un cron y un
+    // clic, o dos réplicas del backend), los dos ven "no avisada" y los dos
+    // insertan. El paciente recibe el recordatorio dos veces.
+    //
+    // La barrera real no es el SELECT sino la base: con el índice único, la
+    // segunda insertación choca y se descarta. Ver
+    // NotificacionRepository::crearSiNoExiste().
+    try {
+        $indices = [];
+        foreach ($pdo->query("SHOW INDEX FROM notificaciones WHERE Key_name = 'uniq_cita_tipo_canal'") as $idx) {
+            $indices[] = $idx['Key_name'];
+        }
+        if (empty($indices)) {
+            // Antes de crear el índice hay que resolver los duplicados que
+            // pueden haber dejado carreras anteriores. De cada grupo se
+            // conserva el más viejo (el que se puede reintentar) y se borran
+            // los sobrantes, porque un aviso duplicado no aporta nada.
+            $pdo->exec(
+                "DELETE n1 FROM notificaciones n1
+                 INNER JOIN notificaciones n2
+                    ON n1.id_cita = n2.id_cita
+                   AND n1.tipo = n2.tipo
+                   AND n1.canal = n2.canal
+                   AND n1.id > n2.id"
+            );
+            $pdo->exec("ALTER TABLE notificaciones ADD UNIQUE KEY uniq_cita_tipo_canal (id_cita, tipo, canal)");
+        }
+    } catch (\PDOException $e) {
+        // Si la migración falla no se corta el arranque: la aplicación
+        // sigue funcionando, solo pierde la garantía de unicidad.
+    }
+
+    // ============================================================
     // INSERCIÓN DE DATOS DE EJEMPLO
     // ============================================================
     // Solo se insertan si las tablas están vacías
@@ -241,6 +428,52 @@ try {
             $stmt->execute($p);
         }
     }
+
+    // ============================================================
+    // SEMILLA DEL MÓDULO TURNERA
+    // ------------------------------------------------------------
+    // Solo corre la primera vez (cuando las tablas están vacías).
+    // ============================================================
+
+    // Especialidades: se derivan de las que YA tienen cargadas los médicos,
+    // para no obligar a cargar dos veces la misma información.
+    // INSERT IGNORE + SELECT DISTINCT: si la especialidad no existe todavía
+    // se inserta; si ya está, IGNORE evita el error de clave duplicada
+    // (unico_especialidad) y no interrumpe la creación del esquema.
+    $pdo->exec(
+        "INSERT IGNORE INTO especialidades (nombre)
+         SELECT DISTINCT especialidad FROM medicos
+         WHERE especialidad IS NOT NULL AND TRIM(especialidad) <> ''"
+    );
+    // Si el paso anterior no trajo nada (base ya creada antes de este módulo),
+    // se carga un catálogo mínimo para que la autogestión tenga con qué trabajar.
+    $especialidadesCount = (int)$pdo->query('SELECT COUNT(*) FROM especialidades')->fetchColumn();
+    if ($especialidadesCount === 0) {
+        $pdo->exec(
+            "INSERT IGNORE INTO especialidades (nombre) VALUES
+             ('Medicina General'), ('Pediatría'), ('Cardiología'),
+             ('Dermatología'), ('Psicología'), ('Odontología')"
+        );
+    }
+
+    // Disponibilidades: agenda semanal de lunes a viernes para todos los médicos
+    // activos que todavía no tengan bloques cargados.
+    //
+    // Se usa un INSERT ... SELECT con NOT EXISTS para que el script sea
+    // idempotente: si se vuelve a ejecutar, no duplica los bloques.
+    // Los médicos atienden de 08:00 a 12:00, turnos de 30 minutos.
+    $pdo->exec(
+        "INSERT INTO disponibilidades (id_medico, dia_semana, hora_inicio, hora_fin, duracion_minutos, activo)
+         SELECT m.id, d.dia, '08:00:00', '12:00:00', 30, 1
+         FROM medicos m
+         CROSS JOIN (SELECT 1 AS dia UNION ALL SELECT 2 UNION ALL SELECT 3
+                     UNION ALL SELECT 4 UNION ALL SELECT 5) d
+         WHERE m.activo = 1
+           AND NOT EXISTS (
+               SELECT 1 FROM disponibilidades x
+               WHERE x.id_medico = m.id AND x.dia_semana = d.dia
+           )"
+    );
 
     // Si algo sale mal (no se puede conectar a MySQL), se atrapa la excepción
 } catch (PDOException $e) {

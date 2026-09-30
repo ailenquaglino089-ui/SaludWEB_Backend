@@ -49,18 +49,28 @@ class MedicoService
      * @param int $pagina Número de página (empieza en 1)
      * @param int $porPagina Cantidad de items por página
      * @param string $busqueda Texto de búsqueda (nombre, matrícula o especialidad)
+     * @param string $especialidad Filtro exacto de especialidad (opcional)
+     * @param int|null $activo 1 = solo activos, 0 = solo inactivos, null = todos
      * @return array Estructura paginada: { items, total, pagina, por_pagina, total_paginas }
      */
-    public function obtenerPaginado(int $pagina = 1, int $porPagina = 10, string $busqueda = ''): array
+    public function obtenerPaginado(int $pagina = 1, int $porPagina = 10, string $busqueda = '', string $especialidad = '', ?int $activo = null): array
     {
         // Sanitiza y acota la búsqueda (anti-XSS + espacios; el LIKE se arma en el repo)
         $busqueda = strip_tags(trim($busqueda));
+
+        // La especialidad también se sanitiza, pero NO se acota: es un valor
+        // exacto que se compara con "=", no un LIKE. No se valida contra el
+        // catálogo de especialidades a propósito: si el nombre no existe
+        // simplemente no trae resultados, que es el comportamiento esperado
+        // de un filtro, y no un error de validación.
+        $especialidad = strip_tags(trim($especialidad));
+
         // Normaliza los parámetros numéricos para evitar valores inválidos
         $pagina = max(1, (int)$pagina);                     // La página mínima es 1
         $porPagina = max(1, min(100, (int)$porPagina));     // Entre 1 y 100 items por página
 
         // Total de registros que coinciden (necesario para calcular las páginas)
-        $total = $this->repo->contar($busqueda);
+        $total = $this->repo->contar($busqueda, $especialidad, $activo);
         // ceil() redondea hacia arriba: 37 registros con 10 x página = 4 páginas
         $totalPaginas = (int) ceil($total / $porPagina);
 
@@ -73,7 +83,7 @@ class MedicoService
         $offset = ($pagina - 1) * $porPagina;
 
         // Pide al repositorio solo los registros de esta página
-        $items = $this->repo->obtenerPaginado($offset, $porPagina, $busqueda);
+        $items = $this->repo->obtenerPaginado($offset, $porPagina, $busqueda, $especialidad, $activo);
 
         // Devuelve la estructura paginada completa para que el frontend dibuje los controles
         return [
