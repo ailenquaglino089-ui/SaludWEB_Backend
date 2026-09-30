@@ -260,27 +260,56 @@ echo "\n=== 6. ESCRITURA REAL EN LA BASE (se deshace al final) ===\n";
 $repoReal = new UsuarioRepository($pdo);
 $svcReal = new UsuarioService($repoReal);
 
-// Se busca un admin que NO sea el único, para poder degradarlo y devolverlo.
-$candidato = $pdo->query(
-    "SELECT id, tipo_usuario FROM usuarios
-     WHERE tipo_usuario = 'admin' AND activo = 1 ORDER BY id LIMIT 1"
+// ------------------------------------------------------------
+// CUENTA DESCARTABLE PARA EL CAMBIO REAL
+// ------------------------------------------------------------
+// Antes, esta sección degradaba a un administrador QUE YA EXISTÍA y al final
+// le devolvía el rol. La idea era "tocar una cuenta de verdad", pero dejaba la
+// base en un estado frágil: si el script se cortaba entre medio (una
+// excepción, un Ctrl+C, la terminal cerrada), la cuenta se quedaba como
+// médico para siempre y nadie se enteraba desde el script.
+//
+// El síntoma apareció días después y en un lugar que no se parece en nada a
+// esta prueba: la administradora veía la tabla de médicos y pacientes sin
+// botón de editar, porque su cuenta había dejado de ser admin. La causa
+// estaba a metros, en un archivo de pruebas.
+//
+// Por eso ahora se crea una cuenta SOLO para esta prueba y se borra al
+// terminar. Las cuentas reales no se tocan, así que aunque el script muera
+// a la mitad, lo peor que puede pasar es que quede un usuario de prueba
+// sobrando, que es un dato inofensivo y se puede borrar a mano.
+//
+// La cuenta es descartable por diseño, no por limpieza: se borra siempre.
+$emailDescartable = 'descartable.rol.' . time() . '@prueba.local';
+
+// Contraseña cualquiera: la cuenta existe solo para la escritura, nunca se
+// inicia sesión con ella. Va hasheada igual porque la columna lo exige.
+$alta = $pdo->prepare(
+    'INSERT INTO usuarios (email, password, nombre, tipo_usuario, activo)
+     VALUES (?, ?, ?, ?, 1)'
+);
+$alta->execute([
+    $emailDescartable,
+    password_hash('no-se-usa-' . bin2hex(random_bytes(8)), PASSWORD_DEFAULT),
+    'Usuario Descartable',
+    'admin',
+]);
+$idCandidato = (int) $pdo->lastInsertId();
+echo "  cuenta descartable creada: {$emailDescartable} (id {$idCandidato})\n";
+
+// El que hace el cambio tiene que ser un admin DISTINTO del candidato, o
+// choca con la regla de "no te degrades a vos mismo" y la prueba probaría
+// otra cosa.
+$otroAdmin = $pdo->query(
+    "SELECT id FROM usuarios
+     WHERE tipo_usuario = 'admin' AND activo = 1 AND id <> {$idCandidato}
+     LIMIT 1"
 )->fetch(PDO::FETCH_ASSOC);
+$idAdminQueActua = $otroAdmin === false ? 0 : (int) $otroAdmin['id'];
 
-if ($candidato === false) {
-    echo "  (omitido: no hay admin activo)\n";
+if ($idAdminQueActua === 0) {
+    echo "  (omitido: hace falta al menos otro admin para que pueda hacer el cambio)\n";
 } else {
-    $idCandidato = (int)$candidato['id'];
-    $rolOriginal = (string)$candidato['tipo_usuario'];
-
-    // El que hace el cambio es otro admin distinto, para no chocar con la
-    // regla de "no te degrades a vos mismo".
-    $otroAdmin = $pdo->query(
-        "SELECT id FROM usuarios
-         WHERE tipo_usuario = 'admin' AND activo = 1 AND id <> {$idCandidato}
-         LIMIT 1"
-    )->fetch(PDO::FETCH_ASSOC);
-    $idAdminQueActua = $otroAdmin === false ? 0 : (int)$otroAdmin['id'];
-
     comprobar("el listado paginado responde (probar_roles.php)", function () {
         $r = (new UsuarioService(new UsuarioRepository($GLOBALS['pdo'])))->listar(1, 5, '', '');
         if (!isset($r['items'], $r['total'], $r['total_paginas'])) {
@@ -290,32 +319,96 @@ if ($candidato === false) {
     });
 
     if ($idAdminQueActua > 0) {
-        comprobar('un cambio de rol real escribe en la base', function () use ($svcReal, $idCandidato, $idAdminQueActua) {
-            $svcReal->cambiarRol($idCandidato, 'medico', $idAdminQueActua);
-            return null;
-        });
+        // ------------------------------------------------------------
+        // try/finally alrededor de toda la sección que escribe en la base.
+        //
+        // POR QUÉ: el finally se ejecuta siempre, haya habido excepción o no.
+        // Antes la limpieza estaba en medio del camino feliz, así que una
+        // excepción cortaba el script y dejaba el cambio a medias.
+        // ------------------------------------------------------------
+        try {
+            comprobar('un cambio de rol real escribe en la base', function () use ($svcReal, $idCandidato, $idAdminQueActua) {
+                $svcReal->cambiarRol($idCandidato, 'medico', $idAdminQueActua);
+                return null;
+            });
 
-        comprobar('el rol quedó efectivamente cambiado', function () use ($pdo, $idCandidato) {
-            $s = $pdo->prepare('SELECT tipo_usuario FROM usuarios WHERE id = ?');
-            $s->execute([$idCandidato]);
-            $actual = (string)$s->fetchColumn();
-            return $actual === 'medico' ? null : "en la base quedó '{$actual}', no 'medico'";
-        });
+            comprobar('el rol quedó efectivamente cambiado', function () use ($pdo, $idCandidato) {
+                $s = $pdo->prepare('SELECT tipo_usuario FROM usuarios WHERE id = ?');
+                $s->execute([$idCandidato]);
+                $actual = (string)$s->fetchColumn();
+                return $actual === 'medico' ? null : "en la base quedó '{$actual}', no 'medico'";
+            });
 
-        // Se restaura el rol original. Esto va fuera de comprobar() a
-        // propósito: si fallara, el script tiene que avisar igual en lugar
-        // de tragarse el error y dejar la base modificada.
-        $repoReal->actualizarRol($idCandidato, $rolOriginal);
-        comprobar('el rol original se restauró', function () use ($pdo, $idCandidato, $rolOriginal) {
-            $s = $pdo->prepare('SELECT tipo_usuario FROM usuarios WHERE id = ?');
+            // La protección del ÚLTIMO admin, probada de verdad.
+            //
+            // La base tiene una sola administradora real, así que esta es la
+            // única vez que se puede comprobar la regla sin tener que inventar
+            // admins de mentira: si se degrada a la que queda, no queda nadie
+            // y el sistema se queda sin nadie que pueda administrar los
+            // permisos. El servicio tiene que rechazarlo con 409.
+            //
+            // Se busca la admin real por rol, no por email. Así el test no
+            // depende de que la cuenta de la administradora siga teniendo el
+            // mismo email.
+            $ultimaAdmin = $pdo->query(
+                "SELECT id FROM usuarios
+                 WHERE tipo_usuario = 'admin' AND activo = 1 AND id <> {$idCandidato}
+                 LIMIT 1"
+            )->fetch(PDO::FETCH_ASSOC);
+
+            if ($ultimaAdmin === false) {
+                echo "  (omitido: no queda ninguna otra admin para probar la regla)\n";
+            } else {
+                $idUltimaAdmin = (int) $ultimaAdmin['id'];
+
+                comprobar('degradar a la última administradora se rechaza con 409', function () use ($svcReal, $idUltimaAdmin, $idAdminQueActua) {
+                    try {
+                        $svcReal->cambiarRol($idUltimaAdmin, 'medico', $idAdminQueActua);
+                        return 'el servicio la degradó y dejó la base sin ningún admin';
+                    } catch (RuntimeException $e) {
+                        return $e->getCode() === 409
+                            ? null
+                            : "la excepción fue de código {$e->getCode()}, no 409";
+                    }
+                });
+
+                comprobar('la última administradora sigue siendo administradora', function () use ($pdo, $idUltimaAdmin) {
+                    $s = $pdo->prepare('SELECT tipo_usuario FROM usuarios WHERE id = ?');
+                    $s->execute([$idUltimaAdmin]);
+                    $actual = (string) $s->fetchColumn();
+                    return $actual === 'admin'
+                        ? null
+                        : "en la base quedó de rol '{$actual}'";
+                });
+            }
+        } catch (Throwable $e) {
+            $fallos++;
+            echo "  FALLA la escritura real lanzó una excepción\n";
+            echo "        " . get_class($e) . ': ' . $e->getMessage() . "\n";
+        } finally {
+            // La cuenta descartable se borra SIEMPRE. No se restaura: se
+            // elimina, que es más limpio que devolverla a admin y dejarla
+            // ahí ocupando una fila. Y como es una cuenta que el script creó,
+            // borrarla no toca ningún dato que le importe a nadie.
+            $borrar = $pdo->prepare('DELETE FROM usuarios WHERE id = ? AND email = ?');
+            $borrar->execute([$idCandidato, $emailDescartable]);
+            echo "  cuenta descartable borrada\n";
+        }
+
+        comprobar('la cuenta descartable ya no está en la base', function () use ($pdo, $idCandidato) {
+            $s = $pdo->prepare('SELECT COUNT(*) AS c FROM usuarios WHERE id = ?');
             $s->execute([$idCandidato]);
-            $actual = (string)$s->fetchColumn();
-            return $actual === $rolOriginal
-                ? null
-                : "en la base quedó '{$actual}', debía quedar '{$rolOriginal}'";
+            $quedan = (int) $s->fetchColumn();
+            return $quedan === 0 ? null : "quedan {$quedan} filas con ese id";
         });
     } else {
-        echo "  (omitido: hay un único admin, no se puede probar el cambio real)\n";
+        echo "  (omitido: hace falta al menos otro admin)\n";
+
+        // Aunque la prueba no se haya hecho, la cuenta que se creó para ella
+        // se borra igual. Si no, cada corrida que no pudiera probarla dejaría
+        // un admin de basura en la base.
+        $pdo->prepare('DELETE FROM usuarios WHERE id = ? AND email = ?')
+            ->execute([$idCandidato, $emailDescartable]);
     }
 }
 

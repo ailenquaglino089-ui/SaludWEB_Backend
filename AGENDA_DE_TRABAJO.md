@@ -7,7 +7,7 @@
 | **Equipo** | Equipo SaludWEB (Ailen Quaglino) |
 | **Fecha de emisión** | 22/09/2026 |
 | **Estado** | En curso — próximos hitos: Pruebas Mobile y entrega final |
-| **Última actualización** | 24/09/2026 |
+| **Última actualización** | 29/09/2026 |
 
 > Las fechas son propuestas y ajustables. Se marca el avance real hasta hoy.
 > 24/09/2026: Fase E avanzada — guía **"Adaptar el sistema a mobile"** aplicada en `SaludWEB_Mobile` (commit `3fe974a`) y **CRUD completo** (alta/edición/baja) implementado en la app mobile.
@@ -83,6 +83,15 @@ profesor y quede registro del estado de cada tarea.
 | F3 | Actualización de documentación y merge `dev → main` | Equipo | 14/10/2026 | 15/10/2026 | ⏳ Pendiente |
 | F4 | Entrega final y defensa | Equipo | 16/10/2026 | 16/10/2026 | ⏳ Pendiente |
 
+### Fase G — Roles y permisos desde la Web
+
+| N° | Actividad | Responsable | Inicio | Fin | Estado |
+| --- | --- | --- | --- | --- | --- |
+| G1 | Pantalla `Usuarios` (Web) con cambio de rol por fila: roles servidos por `/api/usuarios/roles`, menú de acciones accesible, búsqueda con debounce y paginado | Equipo | 28/09/2026 | 29/09/2026 | ✔ Completado |
+| G2 | Datos de demostración con nombres ficticios y una sola administradora: `sembrar_datos_demo.php` (idempotente, no toca contraseñas) | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
+| G3 | Tablas de Médicos y Pacientes: solo botón **Editar** (según permiso); se retira **Eliminar** de la UI. El DELETE protegido por rol (`requireRol(['admin'])`) sigue disponible vía API | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
+| G4 | Regresión del módulo de roles con cuentas descartables: `probar_roles.php` (nuevo: degradar a la última administradora → `409`) y `probar_roles_http.php` — todas las comprobaciones pasan | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
+
 ---
 
 ## 4. Hitos clave
@@ -97,6 +106,7 @@ profesor y quede registro del estado de cada tarea.
 | CRUD completo (alta/edición/baja) en `SaludWEB_Mobile` | 24/09/2026 ✔ |
 | Biometría (huella / Face ID) en `SaludWEB_Mobile` | 24/09/2026 ✔ |
 | SSO (Google / Microsoft) implementado en Mobile + Backend (`/api/auth/sso`) | 24/09/2026 ✔ |
+| Módulo de roles en la Web (pantalla Usuarios + carteles de permiso + datos ficticios de demo) | 29/09/2026 ✔ |
 | Aplicación Mobile funcional | 06/10/2026 |
 | Pruebas integrales finalizadas | 09/10/2026 |
 | Docs finales + merge a `main` | 15/10/2026 |
@@ -109,13 +119,16 @@ profesor y quede registro del estado de cada tarea.
 1. **"Las prescripciones sólo pueden ser hechas por Médicos"** → backend responde `403 Forbidden` si no es rol `medico`; la UI oculta las acciones a pacientes/admin.
 2. Editar y borrar prescripciones: **solo médico** edita; **solo admin** elimina.
 3. Cambio de estado de prescripción: disponible para cualquier usuario autenticado.
-4. Alta/edición de pacientes y médicos: operaciones administrativas (admin).
+4. Alta/edición de pacientes y médicos: operaciones administrativas (admin). En la Web solo se expone **Editar**; la baja queda fuera de la UI (el endpoint sigue protegido por rol).
+5. Cambio de rol de un usuario: solo admin; **la última administradora no se puede degradar** (backend responde `409`).
 
 ## 6. Herramientas de seguimiento
 
 - **Git/GitHub**: historial de commits en `dev`, PR hacia `main`, issues de verificación.
 - **Pruebas manuales**: con Postman/HTTP contra la API real (`http://localhost/Workspace_SaludWEB/SaludWEB_Backend/api`).
-- **Credenciales de prueba**: `admin@prueba.com/admin123`, `medico@prueba.com/medico123`, `paciente@prueba.com/paciente123`.
+- **Credenciales de prueba**: `medico@prueba.com/medico123`, `paciente@prueba.com/paciente123`. La administradora es `admin@salud.com` (contraseña personal, fuera del repo).
+- **Datos de demostración**: `php sembrar_datos_demo.php` deja los datos con nombres ficticios y una sola cuenta administradora (`admin@salud.com`, sin tocar). No modifica ninguna contraseña.
+- **Pruebas del módulo de roles**: `php probar_roles.php` (reglas de negocio) y `php probar_roles_http.php` (endpoints reales). Las dos crean cuentas descartables y las borran al terminar, así que no dependen de ninguna credencial fija ni dejan la base modificada.
 
 ---
 

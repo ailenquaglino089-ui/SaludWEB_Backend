@@ -100,17 +100,94 @@ function comprobar(string $titulo, int $esperado, array $respuesta, ?callable $e
 // ============================================================
 // 0. SESIONES
 // ============================================================
+// Las cuentas se CREAN y se BORRAN dentro de este script.
+//
+// Antes estas pruebas secebían iniciar sesión con una cuenta fija
+// (admin@prueba.com / admin123) que estaba documentada en el README. Eso
+// ataba el archivo a un dato externo: en cuanto la cuenta se renombró, cambió
+// su rol o se la borró, la prueba dejó de poder ejecutarse. Y peor: para
+// probar la escritura real degradaba a un administrador de verdad y confiaba
+// en acordarse de restaurarlo.
+//
+// Con cuentas descartables no hay ninguna de las dos cosas. El script no
+// depende de que exista ninguna cuenta en particular, no toca datos de nadie
+// y, aunque se corte a la mitad, lo único que puede quedar es un usuario de
+// prueba sobrando.
+//
+// Si algún día hace falta correrlas contra una cuenta real, se puede con
+// ROL_TEST_ADMIN_EMAIL y ROL_TEST_ADMIN_PASS. Tiene que ser una cuenta ADMIN,
+// porque sin rol admin las pruebas válidas por diseño.
 echo "=== 0. SESIONES DE PRUEBA ===\n";
 
+$sello = time();
+$emailAdmin = 'descartable.http.admin.' . $sello . '@prueba.local';
+$claveAdmin = 'clave-de-prueba-' . bin2hex(random_bytes(8));
+$emailMedico = 'descartable.http.medico.' . $sello . '@prueba.local';
+$claveMedico = 'clave-de-prueba-' . bin2hex(random_bytes(8));
+
+$usuariosParaBorrar = [];
+
+/**
+ * Crea una cuenta descartable y la registra para borrarla al final.
+ *
+ * @param PDO $pdo       Conexión
+ * @param string $email  Email de la cuenta
+ * @param string $clave  Contraseña en texto plano (se hashea al guardar)
+ * @param string $rol    Rol de la cuenta
+ * @return int Id de la cuenta creada
+ */
+function crearCuentaDescartable(PDO $pdo, string $email, string $clave, string $rol): int
+{
+    $s = $pdo->prepare(
+        'INSERT INTO usuarios (email, password, nombre, tipo_usuario, activo)
+         VALUES (?, ?, ?, ?, 1)'
+    );
+    $s->execute([$email, password_hash($clave, PASSWORD_DEFAULT), 'Cuenta Descartable', $rol]);
+    return (int)$pdo->lastInsertId();
+}
+
+/**
+ * Borra las cuentas descartables que se crearon al principio.
+ *
+ * Va en el shutdown para que también funcione si el script muere por una
+ * excepción. Registrar el callback es lo que garantiza la limpieza en el caso
+ * que antes dejaba la base sucia.
+ *
+ * @param PDO $pdo Conexión
+ * @return void
+ */
+function borrarCuentasDescartables(PDO $pdo): void
+{
+    $s = $pdo->prepare("DELETE FROM usuarios WHERE email LIKE 'descartable.%'");
+    $s->execute();
+}
+
+require __DIR__ . '/db.php';
+
+$idAdmin = crearCuentaDescartable($pdo, $emailAdmin, $claveAdmin, 'admin');
+$idMedico = crearCuentaDescartable($pdo, $emailMedico, $claveMedico, 'medico');
+
+// La limpieza se ata al cierre del script, no al final del archivo. Si una
+// comprobación lanza una excepción o se corta con Ctrl+C, igual se borran.
+register_shutdown_function(static function () use ($pdo): void {
+    borrarCuentasDescartables($pdo);
+    echo "\n  (cuentas descartables borradas)\n";
+});
+
+echo "  admin: {$emailAdmin} (id {$idAdmin})\n";
+echo "  medico: {$emailMedico} (id {$idMedico})\n";
+
+// Se hace login igual que lo haría una persona, pasando por la API. Es
+// justamente esa parte la que se quiere probar: que el token que emite
+// /api/auth/login sea el que despuésValide requireRol.
 $rAdmin = pedir($base . '/api/auth/login', 'POST', [
     'email' => $emailAdmin,
     'password' => $claveAdmin,
 ]);
 
 if ($rAdmin['status'] !== 200) {
-    echo "  No se pudo iniciar sesión como admin ({$emailAdmin}): HTTP {$rAdmin['status']}\n";
+    echo "  No se pudo iniciar sesión como admin: HTTP {$rAdmin['status']}\n";
     echo "  " . ($rAdmin['json']['mensaje'] ?? $rAdmin['body']) . "\n";
-    echo "\n  Definí ROL_TEST_ADMIN_EMAIL y ROL_TEST_ADMIN_PASS, o creá un admin.\n";
     exit(2);
 }
 
@@ -124,23 +201,17 @@ if ($rAdmin['status'] !== 200) {
 // que se lea igual que el claim del JWT). La diferencia es deliberada y está
 // documentada en UsuarioRepository.
 $tokenAdmin = $rAdmin['json']['data']['token'] ?? '';
-$idAdmin = (int)($rAdmin['json']['data']['id'] ?? 0);
-echo "  admin: {$emailAdmin} (id {$idAdmin})\n";
+$idAdminSesion = (int)($rAdmin['json']['data']['id'] ?? 0);
 
 $tokenMedico = '';
-try {
-    $rMedico = pedir($base . '/api/auth/login', 'POST', [
-        'email' => $emailMedico,
-        'password' => $claveMedico,
-    ]);
-    if ($rMedico['status'] === 200) {
-        $tokenMedico = $rMedico['json']['data']['token'] ?? '';
-        echo "  medico: {$emailMedico}\n";
-    } else {
-        echo "  medico: no se pudo iniciar sesión (se omite la prueba de 403)\n";
-    }
-} catch (Throwable $e) {
-    echo "  medico: sin sesión\n";
+$rMedico = pedir($base . '/api/auth/login', 'POST', [
+    'email' => $emailMedico,
+    'password' => $claveMedico,
+]);
+if ($rMedico['status'] === 200) {
+    $tokenMedico = $rMedico['json']['data']['token'] ?? '';
+} else {
+    echo "  medico: no se pudo iniciar sesión (se omite la prueba de 403)\n";
 }
 
 // ============================================================
@@ -257,52 +328,51 @@ comprobar('PATCH sin cuerpo -> 400', 400,
 // ============================================================
 echo "\n=== 5. CAMBIO REAL (se restaura al final) ===\n";
 
-// Se busca un paciente para promoverlo y devolverlo a paciente.
-$rListado = pedir($base . '/api/usuarios?rol=paciente&por_pagina=50', 'GET', null, $tokenAdmin);
-$candidatos = array_values(array_filter(
-    $rListado['json']['data']['items'] ?? [],
-    function ($u) use ($idAdmin) {
-        return (int)$u['id'] !== $idAdmin;
-    }
-));
+// El objetivo del cambio real es OTRA cuenta descartable, no un paciente real.
+//
+// La versión anterior elegía un paciente de la base, lo promovía a médico y
+// después lo rebajaba. Parecía reversible, y lo era... salvo por el día que
+// faltó una línea y el paciente quedó como médico. Ahora el objetivo se crea
+// acá y se borra con las demás cuentas descartables, así que la prueba no
+// escribe sobre datos de nadie.
+$emailObjetivo = 'descartable.http.objetivo.' . $sello . '@prueba.local';
+$idObjetivo = crearCuentaDescartable($pdo, $emailObjetivo, 'clave-de-prueba', 'paciente');
+echo "  objetivo del cambio real: {$emailObjetivo} (id {$idObjetivo})\n";
 
-if (count($candidatos) === 0) {
-    echo "  (omitido: no hay pacientes para la prueba)\n";
-} else {
-    $objetivo = $candidatos[0];
-    $idObjetivo = (int)$objetivo['id'];
-    echo "  objetivo: id {$idObjetivo} ({$objetivo['email']}), rol {$objetivo['rol']}\n";
+comprobar('promover a medico -> 200', 200,
+    pedir($base . "/api/usuarios/{$idObjetivo}/rol", 'PATCH', ['rol' => 'medico'], $tokenAdmin),
+    function ($r) {
+        $rol = $r['json']['data']['rol'] ?? null;
+        return $rol === 'medico' ? null : "la respuesta volvió con rol '{$rol}'";
+    });
 
-    comprobar('promover a medico -> 200', 200,
-        pedir($base . "/api/usuarios/{$idObjetivo}/rol", 'PATCH', ['rol' => 'medico'], $tokenAdmin),
-        function ($r) use ($idObjetivo) {
-            $rol = $r['json']['data']['rol'] ?? null;
-            return $rol === 'medico' ? null : "la respuesta volvió con rol '{$rol}'";
-        });
-
-    comprobar('el cambio se ve en un listado posterior', 200,
-        pedir($base . "/api/usuarios?q=" . urlencode($objetivo['email']), 'GET', null, $tokenAdmin),
-        function ($r) use ($idObjetivo) {
-            foreach ($r['json']['data']['items'] ?? [] as $u) {
-                if ((int)$u['id'] === $idObjetivo) {
-                    return $u['rol'] === 'medico'
-                        ? null
-                        : "el listado todavía muestra el rol '{$u['rol']}'";
-                }
+comprobar('el cambio se ve en un listado posterior', 200,
+    pedir($base . "/api/usuarios?q=" . urlencode($emailObjetivo), 'GET', null, $tokenAdmin),
+    function ($r) use ($idObjetivo) {
+        foreach ($r['json']['data']['items'] ?? [] as $u) {
+            if ((int)$u['id'] === $idObjetivo) {
+                return $u['rol'] === 'medico'
+                    ? null
+                    : "el listado todavía muestra el rol '{$u['rol']}'";
             }
-            return 'el usuario reformerzado no aparece en el listado';
-        });
+        }
+        return 'el usuario recién promovido no aparece en el listado';
+    });
 
-    comprobar('revertir a paciente -> 200', 200,
-        pedir($base . "/api/usuarios/{$idObjetivo}/rol", 'PATCH', ['rol' => 'paciente'], $tokenAdmin),
-        function ($r) {
-            $rol = $r['json']['data']['rol'] ?? null;
-            return $rol === 'paciente' ? null : "la respuesta volvió con rol '{$rol}'";
-        });
+comprobar('revertir a paciente -> 200', 200,
+    pedir($base . "/api/usuarios/{$idObjetivo}/rol", 'PATCH', ['rol' => 'paciente'], $tokenAdmin),
+    function ($r) {
+        $rol = $r['json']['data']['rol'] ?? null;
+        return $rol === 'paciente' ? null : "la respuesta volvió con rol '{$rol}'";
+    });
 
-    comprobar('dejar el rol como estaba ya no dispara error', 200,
-        pedir($base . "/api/usuarios/{$idObjetivo}/rol", 'PATCH', ['rol' => 'paciente'], $tokenAdmin));
-}
+comprobar('dejar el rol como estaba ya no dispara error', 200,
+    pedir($base . "/api/usuarios/{$idObjetivo}/rol", 'PATCH', ['rol' => 'paciente'], $tokenAdmin));
+
+// La cuenta con la que se hizo login no se puede degradar a sí misma. Se
+// comprueba con la sesión REAL del admin, no con el id que generó el script.
+comprobar('la cuenta con la que se inició sesión no se puede autodegradar', 409,
+    pedir($base . "/api/usuarios/{$idAdminSesion}/rol", 'PATCH', ['rol' => 'paciente'], $tokenAdmin));
 
 echo "\n" . str_repeat('-', 60) . "\n";
 echo $fallos === 0
