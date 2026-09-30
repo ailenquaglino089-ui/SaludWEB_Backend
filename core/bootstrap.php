@@ -94,6 +94,22 @@ require_once __DIR__ . '/../services/AuthService.php';
 require_once __DIR__ . '/../controllers/AuthController.php';
 
 // ============================================================
+// MÓDULO: "Gestión de roles y permisos"
+// ============================================================
+// Permite cambiar el tipo_usuario (paciente/medico/admin) de una cuenta.
+// Sigue el mismo orden de carga que el resto del proyecto: contrato,
+// implementación, servicio y controlador.
+//
+// El require del contrato va PRIMERO porque UsuarioRepository lo implementa:
+// si se invirtiera, PHP no encontraría la interfaz al declarar la clase y
+// fallaría con un error fatal en el arranque, no con una excepción
+// manejable.
+require_once __DIR__ . '/../persistence/UsuarioRepositoryInterface.php';
+require_once __DIR__ . '/../persistence/UsuarioRepository.php';
+require_once __DIR__ . '/../services/UsuarioService.php';
+require_once __DIR__ . '/../controllers/UsuarioController.php';
+
+// ============================================================
 // MÓDULO: "Sistema de gestión de citas online" (Turnera)
 // ============================================================
 // Orden de carga: primero los contratos (interfaces), después las
@@ -180,6 +196,15 @@ $rateLimiter = new RateLimiter(__DIR__ . '/../storage/rate');
 
 // Crea el servicio de Autenticación (recibe PDO + JwtService por inyección)
 $authService = new AuthService($pdo, $jwtService);
+
+// ============================================================
+// ENSAMBLADO DE LA GESTIÓN DE ROLES
+// ============================================================
+// Solo se instancia el repositorio acá. El servicio se arma en la ruta, como
+// el resto de los módulos, porque cada endpoint construye su propio
+// controlador con lo que necesita y el payload del token cambia en cada
+// petición.
+$usuarioRepo = new UsuarioRepository($pdo);
 
 // ============================================================
 // ENSAMBLADO DE LA TURNERA (inyección de dependencias)

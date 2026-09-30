@@ -733,6 +733,62 @@ $router->delete('/api/especialidades/{id}', function ($id) use ($especialidadSer
 });
 
 // ============================================================
+// MÓDULO: "Gestión de roles y permisos"
+// ------------------------------------------------------------
+// Estas rutas permiten listar las cuentas del sistema y cambiar su
+// tipo_usuario (paciente / medico / admin).
+//
+// LAS TRES SON EXCLUSIVAS DE ADMIN, y eso no es una decisión de este
+// módulo: es la regla que pedido el proyecto. requireRol() se ejecuta
+// SIEMPRE después de verificarToken() y antes de construir el controlador,
+// así que un token ausente recibe 401 y un token de un rol incorrecto
+// recibe 403, sin llegar nunca a la capa de negocio.
+//
+// La diferencia entre las tres rutas está en qué exigen:
+//
+//   GET  /api/usuarios/roles    → solo lectura, para armar el <select>
+//   GET  /api/usuarios          → listado paginado con filtros
+//   PATCH /api/usuarios/{id}/rol → escritura (cambia un rol)
+//
+// SOBRE EL ORDEN DE DECLARACIÓN
+// ------------------------------
+// No importa en este Router, y conviene saber por qué. matchRoute()
+// desarma la ruta registrada y la URL solicitada en segmentos por "/" y
+// primero compara que tengan la MISMA cantidad de segmentos; recién después
+// reemplaza los {param}.
+//
+//   /api/usuarios/roles      -> ["api", "usuarios", "roles"]        (3)
+//   /api/usuarios/{id}/rol   -> ["api", "usuarios", "{id}", "rol"]  (4)
+//
+// Como los tres y los cuatro nunca coinciden, estas rutas no se pisan
+// aunque se declararan en cualquier orden. El orden importa en un router
+// que comparara la ruta completa como una cadena, que no es el caso aquí.
+
+// GET /api/usuarios/roles - Roles válidos (SOLO ADMIN)
+$router->get('/api/usuarios/roles', function () use ($usuarioRepo, $authMiddleware) {
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['admin']);
+    $controller = new UsuarioController(new UsuarioService($usuarioRepo), $payload);
+    $controller->roles();
+});
+
+// GET /api/usuarios - Listar usuarios (SOLO ADMIN)
+$router->get('/api/usuarios', function () use ($usuarioRepo, $authMiddleware) {
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['admin']);
+    $controller = new UsuarioController(new UsuarioService($usuarioRepo), $payload);
+    $controller->index();
+});
+
+// PATCH /api/usuarios/{id}/rol - Cambiar el rol de un usuario (SOLO ADMIN)
+$router->patch('/api/usuarios/{id}/rol', function ($id) use ($usuarioRepo, $authMiddleware) {
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['admin']);
+    $controller = new UsuarioController(new UsuarioService($usuarioRepo), $payload);
+    $controller->cambiarRol((int) $id);
+});
+
+// ============================================================
 // Manejador de rutas no encontradas (404)
 // Devuelve error JSON en lugar de redirigir
 // ============================================================
