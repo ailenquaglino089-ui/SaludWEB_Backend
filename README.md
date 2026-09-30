@@ -1,21 +1,45 @@
-# Repositorio Backend
+# Repositorio Backend — SaludWEB
 
-Capa de API y lógica de acceso a datos para el proyecto **SaludWEB** (Programación IV).
+Capa de **API y lógica de acceso a datos** del proyecto **SaludWEB** (Programación IV).
+Expone únicamente endpoints **JSON**, desacoplado por completo del frontend (la SPA web y
+la app móvil consumen esta misma API).
+
+## Qué hacemos acá (visión general)
+
+- **API REST** en PHP puro con arquitectura en capas
+  (`routes.php` → `controllers/` → `services/` → `persistence/`), leída de arriba a abajo
+  y comentada **línea por línea**.
+- **Autenticación JWT** (HS256) con rutas *públicas*, *protegidas* (401 si falta token) y
+  *solo-admin* (403 si el rol no corresponde).
+- **Módulo de roles y permisos**: las cuentas tienen rol `admin | medico | paciente` y el
+  backend valida cada operación, nunca el frontend.
+- **Vinculación de cuentas con fichas** (turnera): al loguearse, el usuario debe quedar
+  vinculado a una ficha — el **médico** con su **matrícula** y el **paciente** con su **DNI** —
+  para saber *a quién* se le asigna cada turno.
+- **Turnera (sistema de gestión de citas online)**: especialidades, disponibilidades,
+  reserva/cancelación de turnos, agenda, notificaciones con token y estadísticas de gestión.
+- **SSO** con Google / Microsoft (PKCE, sin secret en el cliente).
 
 ## Contenido
-- controllers/
-- services/
-- persistence/
-- core/ (Router, Response, JwtService, AuthMiddleware, Config, Secret)
-- vendor/ (firebase/php-jwt - instalado con Composer)
-- db.php
-- index.php
-- routes.php
 
-## Propósito
-- Exponer endpoints HTTP para web y mobile.
-- Mantener la lógica de negocio y persistencia separada.
-- Autenticación JWT (HS256) con rutas públicas, protegidas (401) y solo-admin (403).
+```
+routes.php                  →  todas las rutas de la API (leer primero)
+index.php                   →  punto de entrada (single entry point)
+.htaccess                   →  enrutamiento de Apache hacia index.php
+db.php                      →  conexión y creación automática de la BD
+core/                       →  Router, Response, JwtService, AuthMiddleware, Config, Secret
+controllers/ services/      →  lógica HTTP y de negocio (una por recurso)
+persistence/                →  consultas SQL (patrón Repositorio)
+vendor/                     →  firebase/php-jwt (instalado con Composer)
+sembrar_datos_demo.php      →  regenera las fichas de demostración (idempotente)
+probar_roles.php            →  suite de pruebas de roles y permisos
+probar_roles_http.php       →  idem, contra la API real por HTTP
+probar_vinculacion.php      →  suite de pruebas de vinculación de fichas
+probar_turnera.php          →  suite de pruebas del módulo turnera
+verificar_turnera.php       →  verificación rápida de salud de la turnera
+AGENDA_DE_TRABAJO.md        →  planificación, hitos y pasos del proyecto
+PROJECT_BRIEF.md            →  brief del proyecto y entregables
+```
 
 ## Puesta en marcha
 
@@ -35,14 +59,17 @@ cd SaludWEB_Backend
 composer install
 ```
 
-Si Composer no está instalado globalmente, descargá `composer.phar` dentro de la carpeta del proyecto y ejecutá:
+Si Composer no está instalado globalmente, descargá `composer.phar` dentro de la carpeta
+del proyecto y ejecutá:
 
 ```bash
 php composer.phar install
 ```
 
 ### 3. Configurar entorno (opcional)
-Copia `.env.example` a `.env` y ajustá los valores según corresponda (base de datos, `JWT_SECRET`, `CORS_ORIGINS`). En desarrollo, si no se configura nada, se usan los valores por defecto de `db.php` y `core/Secret.php`.
+Copia `.env.example` a `.env` y ajustá los valores (base de datos, `JWT_SECRET`,
+`CORS_ORIGINS`, `SSO_*`). En desarrollo, si no se configura nada, se usan los valores por
+defecto de `db.php` y `core/Secret.php`.
 
 ### 4. Correr el backend
 
@@ -52,10 +79,13 @@ php -S localhost:8000 index.php
 ```
 
 **Opción B: Apache/XAMPP**
-Copiá la carpeta dentro de `htdocs` (ej: `C:\xampp\htdocs\SaludWEB_Backend`) y abrí la URL correspondiente:
+Copiá la carpeta dentro de `htdocs` (ej: `C:\xampp\htdocs\SaludWEB_Backend`) y abrí:
 ```
 http://localhost/SaludWEB_Backend/api/health
 ```
+
+> En el primer request, `db.php` crea automáticamente la base de datos, las tablas y los
+> datos de ejemplo (no hace falta importar ningún SQL).
 
 ### 5. Verificar
 ```bash
@@ -63,19 +93,66 @@ curl http://localhost:8000/api/health
 ```
 Debe responder `200` con `{"data":{"status":"ok",...},"message":"API SaludWEB - Programación IV"}`.
 
-> En el primer request, `db.php` crea automáticamente la base de datos `pacientes`, las tablas y los datos de ejemplo (no hace falta importar ningún SQL).
+## Autenticación y SSO
 
-## Autenticación
 1. `POST /api/auth/login` con `{ "email": "...", "password": "..." }` → devuelve un JWT.
 2. Enviarlo en cada petición protegida: `Authorization: Bearer <jwt>`.
-3. El secreto se toma de la variable de entorno `JWT_SECRET` o se genera en `storage/secret.key`.
+3. El secreto se toma de `JWT_SECRET` o se genera en `storage/secret.key`.
+4. `POST /api/auth/sso` con `{ "provider": "google" | "microsoft", "id_token": "..." }`
+   → valida la firma del token contra las claves públicas (JWKS) y devuelve el JWT de
+   SaludWEB. **No auto-crea cuentas**: solo habilita cuentas locales existentes y activas
+   (el email del proveedor debe coincidir). Sin credenciales configuradas responde `501`.
+5. `POST /api/auth/vincular` con `{ "tipo": "medico", "documento": "<matrícula>" }` o
+   `{ "tipo": "paciente", "documento": "<DNI>" }` → vincula la cuenta con su ficha.
+   Sin ficha vinculada, el usuario no puede reservar turnos.
 
-## SSO (Google / Microsoft Entra ID)
-4. `POST /api/auth/sso` con `{ "provider": "google" | "microsoft", "id_token": "..." }` → verifica
-   la firma del `id_token` contra las claves públicas del proveedor (JWKS) y devuelve el JWT de
-   SaludWEB (misma respuesta que `/api/auth/login`). Solo habilita cuentas locales existentes y activas
-   (el email del proveedor debe coincidir); no se auto-crean cuentas.
-5. Configurá las variables de entorno en `.env`: `SSO_GOOGLE_CLIENT_ID`, `SSO_MICROSOFT_CLIENT_ID`
-   y `SSO_MICROSOFT_TENANT` (ver `.env.example`). Sin credenciales, el endpoint responde `501`.
-6. El `id_token` lo obtiene la app móvil `SaludWEB_Mobile` con `expo-auth-session` (flujo público/PKCE,
-   sin secret en el dispositivo); los botones de cada proveedor solo se muestran si está configurado.
+## Módulos y reglas de negocio
+
+| Módulo | Rutas principales | Regla |
+|---|---|---|
+| Catálogos | `GET /api/medicos`, `/api/pacientes`, `/api/obras-sociales` | Públicos |
+| Médicos | `POST/PUT/PATCH/DELETE /api/medicos/{id}` | **Solo admin** (403 si no) |
+| Pacientes | `POST/PUT/PATCH` (protegido); `DELETE` | Crear/editar con token; borrar solo admin |
+| Prescripciones | `GET` (protegido, dato clínico); `POST/PUT/PATCH`; `DELETE`; `PATCH .../estado` | Crear/editar **solo médico**; borrar solo admin; cambiar estado con token |
+| Turnera | `GET /api/especialidades`, `/api/disponibilidades`, `/api/citas/disponibilidad` | Catálogos y disponibilidad públicos |
+| Turnera | `GET /api/citas/agenda`, `/api/citas`, `POST /api/citas`, `POST /api/citas/{id}/cancelar`, `PATCH /api/citas/{id}/estado` | Protegidas; el paciente solo ve sus turnos |
+| Turnera | `DELETE /api/citas/{id}`, `POST/PUT/DELETE /api/especialidades` | Solo admin |
+| Turnera | `POST /api/disponibilidades` (+ PUT/DELETE), `GET /api/estadisticas` | El profesional publica su propia agenda |
+| Notificaciones | `GET /api/notificaciones`, `POST .../recordatorios`, `.../{id}/reintentar` | Protegidas |
+| Notificaciones | `POST /api/notificaciones/procesar` | Solo admin |
+| Usuarios | `GET /api/usuarios`, `GET /api/usuarios/roles`, `PATCH /api/usuarios/{id}/rol` | Solo admin |
+
+## Datos de demostración
+
+Las cuentas de prueba (creadas por la base al arrancar) ya tienen ficha vinculada:
+
+| Rol | Usuario | Contraseña |
+|---|---|---|
+| Médico | `medico@prueba.com` | `medico123` |
+| Paciente | `paciente@prueba.com` | `paciente123` |
+| Administradora | `admin@salud.com` | (contraseña personal, no está en el repo) |
+
+Si los datos de demo se desarmaron, regeneralos con:
+```bash
+php sembrar_datos_demo.php
+```
+El script es **idempotente**: crea o adopta fichas según matrícula/DNI, vincula las cuentas
+y no toca contraseñas.
+
+## Pruebas
+
+Las suites están comentadas línea por línea y no tocan la base (crean sus propios datos y
+los borran al terminar):
+
+```bash
+php probar_roles.php          # roles y permisos (matriz completa)
+php probar_roles_http.php     # idem, contra la API por HTTP (requiere servidor)
+php probar_vinculacion.php    # vinculación de fichas (médicos y pacientes)
+php probar_turnera.php        # turnera completa (requiere API en 127.0.0.1:8080)
+php verificar_turnera.php     # chequeo rápido de salud de la turnera
+```
+
+## Documentación del proyecto
+
+- `AGENDA_DE_TRABAJO.md` — todas las fases, hitos, decisiones y resultados (F1 a F4).
+- `PROJECT_BRIEF.md` — brief y entregables.
