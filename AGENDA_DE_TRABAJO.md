@@ -88,7 +88,7 @@ profesor y quede registro del estado de cada tarea.
 | N° | Actividad | Responsable | Inicio | Fin | Estado |
 | --- | --- | --- | --- | --- | --- |
 | G1 | Pantalla `Usuarios` (Web) con cambio de rol por fila: roles servidos por `/api/usuarios/roles`, menú de acciones accesible, búsqueda con debounce y paginado | Equipo | 28/09/2026 | 29/09/2026 | ✔ Completado |
-| G2 | Datos de demostración con nombres ficticios y una sola administradora: `sembrar_datos_demo.php` (idempotente, no toca contraseñas) | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
+| G2 | Datos de demostración completos: `sembrar_datos_demo.php` (idempotente, no toca contraseñas) deja nombres ficticios, una sola administradora **y la ficha de cada cuenta vinculada** (médico con matrícula + agenda, paciente con DNI), corrigiendo vínculos viejos de pruebas | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
 | G3 | Tablas de Médicos y Pacientes: solo botón **Editar** (según permiso); se retira **Eliminar** de la UI. El DELETE protegido por rol (`requireRol(['admin'])`) sigue disponible vía API | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
 | G4 | Regresión del módulo de roles con cuentas descartables: `probar_roles.php` (nuevo: degradar a la última administradora → `409`) y `probar_roles_http.php` — todas las comprobaciones pasan | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
 

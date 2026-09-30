@@ -3,7 +3,10 @@
 // sembrar_datos_demo.php - Datos de demostración limpios
 // ============================================================
 // Deja la tabla de usuarios con nombres que se leen de una persona a otra y
-// con una sola cuenta de administrador.
+// con una sola cuenta de administrador. Además crea la FICHA de cada cuenta
+// de la demo (médico o paciente) y une una con la otra, que es lo que hace
+// que la cuenta pueda operar: sin ficha, un médico no publica agenda ni
+// receta, y un paciente no reserva turnos.
 //
 // POR QUÉ EXISTE
 // --------------
@@ -19,7 +22,15 @@
 //
 // QUÉ HACE Y QUÉ NO HACE
 // ----------------------
-// Cambia NOMBRES, EMAILS y ROLES de las cuentas de demostración.
+// Cambia NOMBRES, EMAILS y ROLES de las cuentas de demostración, y además:
+//   1. Asegura que cada médico de la demo tenga ficha en la tabla medicos
+//      (nombre, matrícula y especialidad) y le asigna esa ficha al usuario.
+//   2. Asegura que cada paciente de la demo tenga ficha en la tabla pacientes
+//      (nombre, DNI y obra social) y le asigna esa ficha al usuario.
+//   3. Corrige vínculos que quedaron mal de pruebas viejas (un médico de la
+//      demo apuntando a la ficha de otro médico, un paciente apuntando a una
+//      ficha ajena) y apaga las fichas "fantasma" que copian el nombre de un
+//      rol del otro (p.ej. un paciente llamado "Dr. Alonso Tramposo").
 //
 // NO toca ninguna contraseña. Ni una. Este script no lee ni escribe la
 // columna password, y eso es deliberado: la contraseña de la administradora
@@ -27,36 +38,15 @@
 // entrar con una clave conocida hay otra herramienta, que dice la clave en
 // pantalla.
 //
-// Es IDEMPOTENTE: correrlo dos veces deja lo mismo que correrlo una. Se puede
-// usar para arreglar la base después de otra prueba que la haya dejado sucia.
+// Las fichas se identifican igual que el módulo de vinculación
+// (sin repositorio: acá se escribe directo):
+//   - médico   → matrícula (medicos.matricula)
+//   - paciente → DNI (pacientes.dni, que además es UNIQUE)
+// Si la ficha no existe se crea; si existe se adopta y se actualiza su
+// nombre/datos de demo. Es IDEMPOTENTE: correrlo dos veces deja lo mismo.
 //
-// LA CUENTA ADMINISTRADORA
-// ------------------------
-// Queda una sola cuenta con rol admin: admin@salud.com, que es la de la
-// administradora del proyecto. Su nombre y su email no se tocan. Las demás
-// pasan a medico o paciente.
-//
-// Esto no es decorativo. Con cuatro administradores, la pantalla de Usuarios
-// muestra cuatro filas que pueden cambiar roles, y no queda claro cuál es la
-// que realmente manda. Con una, se lee de un vistazo.
-//
-// LOS NOMBRES DE LOS DEMÁS
-// -------------------------
-// Son ficticios y un poco ingeniosos, a propósito.
-//
-// La primera versión de la demo usaba nombres de la vida real (Dra. Laura
-// Gómez, Pedro Sánchez). Resultaron un problema en los dos sentidos:
-//
-//   - Eran aburridos. Una tabla de usuarios con nombres así no dice de qué
-//     trata la pantalla ni por qué hay Accounts de prueba.
-//   - Y uno terminaba siendo el nombre de la administradora repetido, que en
-//     una tabla de permisos se lee como un error de datos.
-//
-// Con nombres inventados, cada fila se reconoce de un vistazo y queda claro
-// que el conjunto es de prueba sin que haya que decirlo.
-//
-// La cuenta admin@salud.com queda fuera de esta decisión a propósito: es una
-// persona real y lleva su nombre real.
+// La cuenta administradora queda sin ficha a propósito: un admin opera con
+// su rol y no necesita ficha clínica para administrar.
 // ------------------------------------------------------------
 declare(strict_types=1);
 
@@ -118,6 +108,95 @@ $BORRAR = [
     'prog4@correo.com',
     'prueba.turnera.%',   // el % es un comodín de SQL, no un nombre literal
 ];
+
+// ------------------------------------------------------------
+// FICHAS DE LA DEMO
+// ------------------------------------------------------------
+// Cada cuenta de la demo necesita su ficha para poder operar:
+//
+//   - Un médico sin ficha no puede publicar agenda ni prescribir.
+//   - Un paciente sin ficha no puede reservar turnos.
+//
+// Estos dos arreglos son la ficha como la vería la pantalla: para el médico,
+// matrícula y especialidad; para el paciente, DNI y obra social. El nombre de
+// la ficha es el MISMO que el de la cuenta de usuario, porque el módulo de
+// vinculación compara ambos (normalizados) además del documento: una ficha de
+// "Dra. Milagros Cifuentes" con la cuenta "Dra. Milagros Cifuentes" vincula
+// sola cuando el usuario entra en /configuracion.
+//
+// Los DNI y matrículas son inventados y del rango 100.xxx a propósito, para
+// que nunca choquen con una ficha real que un día se cargue (las reales
+// empiezan con 7.350.xxx para arriba o con otra forma).
+//
+// @var array<int, array{email:string, nombre:string, matricula:string, especialidad:string}>
+$DEMO_MEDICOS = [
+    [
+        'email'        => 'medico@prueba.com',
+        'nombre'       => 'Dra. Milagros Cifuentes',
+        'matricula'    => 'MP-1001',
+        'especialidad' => 'Medicina General',
+    ],
+    [
+        'email'        => 'sofia.ondina@saludweb.com',
+        'nombre'       => 'Dra. Sofía Ondina',
+        'matricula'    => 'MP-1002',
+        'especialidad' => 'Pediatría',
+    ],
+    [
+        'email'        => 'alonso.tramposo@saludweb.com',
+        'nombre'       => 'Dr. Alonso Tramposo',
+        'matricula'    => 'MP-1003',
+        'especialidad' => 'Cardiología',
+    ],
+    [
+        'email'        => 'bruno.cosmico@saludweb.com',
+        'nombre'       => 'Dr. Bruno Cósmico',
+        'matricula'    => 'MP-1004',
+        'especialidad' => 'Neurología',
+    ],
+];
+
+/**
+ * @var array<int, array{email:string, nombre:string, dni:string, obra:int}>
+ */
+$DEMO_PACIENTES = [
+    [
+        'email'  => 'paciente@prueba.com',
+        'nombre' => 'Capitán Ñoño Novoa',
+        'dni'    => '40.100.001',
+        'obra'   => 1,
+    ],
+    [
+        'email'  => 'senora.gato.atomico@saludweb.com',
+        'nombre' => 'Doña del Gato Atómico',
+        'dni'    => '40.100.002',
+        'obra'   => 2,
+    ],
+    [
+        'email'  => 'ada.byte@saludweb.com',
+        'nombre' => 'Profe Ada Byte',
+        'dni'    => '40.100.003',
+        'obra'   => 1,
+    ],
+    [
+        'email'  => 'don.pedrito@saludweb.com',
+        'nombre' => 'Don Pedrito Confiado',
+        'dni'    => '40.100.004',
+        'obra'   => 3,
+    ],
+    [
+        'email'  => 'prudencia.mentirosa@saludweb.com',
+        'nombre' => 'Doña Prudencia Mentirosa',
+        'dni'    => '40.100.005',
+        'obra'   => 2,
+    ],
+];
+
+// Nombres de DEMO de los médicos, para detectar fichas del otro rol que los
+// copian. Normalizados: "Dr. Alonso Tramposo" y "dr  alonso  tramposo" son lo
+// mismo, porque son los nombres que se comparan en el vincular.
+$nombresMedicos = array_column($DEMO_MEDICOS, 'nombre');
+$nombresPacientes = array_column($DEMO_PACIENTES, 'nombre');
 
 // ------------------------------------------------------------
 // EJECUCIÓN
@@ -208,13 +287,158 @@ if ($desactivados > 0) {
 }
 
 // ------------------------------------------------------------
+// FICHAS: CREAR O ADOPTAR Y VINCULAR
+// ------------------------------------------------------------
+// Acá se escriben las tablas medicos y pacientes DENTRO del mismo script que
+// deja las cuentas, porque una cuenta sin ficha es una cuenta que no puede
+// operar. Separar la cuenta de su ficha en dos scripts sería una demo a
+// medias: hay que correr siempre los dos, y en cuanto se corra uno solo,
+// nadie se entera.
+//
+// La identificación de una ficha existente es la misma que usa el backend
+// para vincular (matrícula para médico, DNI para paciente), así que si la
+// ficha ya existe por accidente de una prueba, se adopta en vez de duplicar.
+
+/**
+ * Normaliza un nombre igual que lo hace el servicio de vinculación: en
+ * minúsculas, sin tildes y con los espacios colapsados. Es la misma
+ * comparación que usa AuthService al vincular, copiada acá para no arrastrar
+ * esa dependencia a un script de datos.
+ */
+function normalizarNombre(string $texto): string
+{
+    $sinAcentos = strtr(mb_strtolower($texto), [
+        'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
+        'ü' => 'u', 'ñ' => 'ñ',
+    ]);
+
+    // mb_ereg_replace por expresión regular para colapsar los espacios
+    // repetidos ("pedro   perez" -> "pedro perez").
+    return trim((string)mb_ereg_replace('\s+', ' ', $sinAcentos));
+}
+
+// --- Médicos ---
+// Por cada médico de la demo: se busca la ficha por matrícula (que es como
+// la busca el vincular); si no, por nombre; si tampoco, se crea. Después se
+// la actualiza con los datos de demo y se la clava al usuario.
+$buscarMed = $pdo->prepare('SELECT id FROM medicos WHERE matricula = ? LIMIT 1');
+$buscarMedPorNombre = $pdo->prepare('SELECT id FROM medicos WHERE nombre = ? LIMIT 1');
+$crearMed = $pdo->prepare('INSERT INTO medicos (nombre, matricula, especialidad, activo) VALUES (?, ?, ?, 1)');
+$actualizarMed = $pdo->prepare('UPDATE medicos SET nombre = ?, matricula = ?, especialidad = ?, activo = 1 WHERE id = ?');
+$vincularMed = $pdo->prepare('UPDATE usuarios SET id_medico = ? WHERE email = ?');
+
+echo PHP_EOL . 'FICHAS DE MÉDICO' . PHP_EOL;
+foreach ($DEMO_MEDICOS as $med) {
+    $origen = null;
+
+    $buscarMed->execute([$med['matricula']]);
+    $ficha = $buscarMed->fetch(PDO::FETCH_ASSOC);
+
+    if ($ficha) {
+        $origen = 'matrícula';
+    } else {
+        // La matrícula no es única en el esquema, así que si no apareció,
+        // todavía puede existir la ficha con el nombre: es la ficha que quedó
+        // de una corrida anterior de pruebas de vinculación.
+        $buscarMedPorNombre->execute([$med['nombre']]);
+        $ficha = $buscarMedPorNombre->fetch(PDO::FETCH_ASSOC);
+        if ($ficha) {
+            $origen = 'nombre';
+        }
+    }
+
+    if ($ficha === false) {
+        $crearMed->execute([$med['nombre'], $med['matricula'], $med['especialidad']]);
+        $idFicha = (int)$pdo->lastInsertId();
+        $origen = 'creada';
+    } else {
+        $idFicha = (int)$ficha['id'];
+        // Se re-escribe la ficha adoptada con los datos canónicos de la demo:
+        // si una ficha de prueba trajo otra matrícula o estaba dada de baja,
+        // acá vuelve a quedar como la demo la espera.
+        $actualizarMed->execute([$med['nombre'], $med['matricula'], $med['especialidad'], $idFicha]);
+    }
+
+    $vincularMed->execute([$idFicha, $med['email']]);
+    echo "  {$med['email']} -> ficha #{$idFicha} ({$origen}) {$med['nombre']}\n";
+}
+
+// --- Pacientes ---
+// Ídem, pero por DNI (que acá sí es UNIQUE, así que la búsqueda por DNI
+// nunca puede devolver dos fichas).
+$buscarPac = $pdo->prepare('SELECT id FROM pacientes WHERE dni = ? LIMIT 1');
+$buscarPacPorNombre = $pdo->prepare('SELECT id FROM pacientes WHERE nombre = ? LIMIT 1');
+$crearPac = $pdo->prepare('INSERT INTO pacientes (dni, nombre, id_obra_social, activo) VALUES (?, ?, ?, 1)');
+$actualizarPac = $pdo->prepare('UPDATE pacientes SET dni = ?, nombre = ?, id_obra_social = ?, activo = 1 WHERE id = ?');
+$vincularPac = $pdo->prepare('UPDATE usuarios SET id_paciente = ? WHERE email = ?');
+
+echo PHP_EOL . 'FICHAS DE PACIENTE' . PHP_EOL;
+foreach ($DEMO_PACIENTES as $pac) {
+    $origen = null;
+
+    $buscarPac->execute([$pac['dni']]);
+    $ficha = $buscarPac->fetch(PDO::FETCH_ASSOC);
+
+    if ($ficha) {
+        $origen = 'DNI';
+    } else {
+        $buscarPacPorNombre->execute([$pac['nombre']]);
+        $ficha = $buscarPacPorNombre->fetch(PDO::FETCH_ASSOC);
+        if ($ficha) {
+            $origen = 'nombre';
+        }
+    }
+
+    if ($ficha === false) {
+        $crearPac->execute([$pac['dni'], $pac['nombre'], $pac['obra']]);
+        $idFicha = (int)$pdo->lastInsertId();
+        $origen = 'creada';
+    } else {
+        $idFicha = (int)$ficha['id'];
+        $actualizarPac->execute([$pac['dni'], $pac['nombre'], $pac['obra'], $idFicha]);
+    }
+
+    $vincularPac->execute([$idFicha, $pac['email']]);
+    echo "  {$pac['email']} -> ficha #{$idFicha} ({$origen}) {$pac['nombre']}\n";
+}
+
+// ------------------------------------------------------------
+// FICHAS FANTASMA
+// ------------------------------------------------------------
+// Durante las pruebas de vinculación se crearon fichas que copian el nombre
+// de un rol del otro, el caso más claro es un PACIENTE llamado
+// "Dr. Alonso Tramposo". En una tabla de pacientes eso se lee como un error
+// de datos (un doctor en la lista de pacientes). Se apagan, no se borran:
+// borrar una ficha podría romper citas o prescripciones que la apunten.
+echo PHP_EOL . 'FICHAS SIN USO' . PHP_EOL;
+
+$nombresMedicosNorm = array_map('normalizarNombre', $nombresMedicos);
+$nombresPacientesNorm = array_map('normalizarNombre', $nombresPacientes);
+
+// Paciente cuyo nombre es el de un médico de la demo.
+foreach ($pdo->query('SELECT id, nombre FROM pacientes') as $p) {
+    if (in_array(normalizarNombre((string)$p['nombre']), $nombresMedicosNorm, true)) {
+        $pdo->prepare('UPDATE pacientes SET activo = 0 WHERE id = ?')->execute([(int)$p['id']]);
+        echo "  paciente #{$p['id']} apagada ({$p['nombre']} es nombre de médico)\n";
+    }
+}
+
+// Médico cuyo nombre es el de un paciente de la demo (por simetría).
+foreach ($pdo->query('SELECT id, nombre FROM medicos') as $m) {
+    if (in_array(normalizarNombre((string)$m['nombre']), $nombresPacientesNorm, true)) {
+        $pdo->prepare('UPDATE medicos SET activo = 0 WHERE id = ?')->execute([(int)$m['id']]);
+        echo "  médico #{$m['id']} apagado ({$m['nombre']} es nombre de paciente)\n";
+    }
+}
+
+// ------------------------------------------------------------
 // RESULTADO
 // ------------------------------------------------------------
 echo PHP_EOL . str_repeat('-', 66) . PHP_EOL;
 echo "Cuentas de la demostración" . PHP_EOL . str_repeat('-', 66) . PHP_EOL;
 
 $filas = $pdo->query(
-    'SELECT id, email, nombre, tipo_usuario, activo
+    'SELECT id, email, nombre, tipo_usuario, activo, id_paciente, id_medico
      FROM usuarios ORDER BY tipo_usuario, nombre'
 )->fetchAll(PDO::FETCH_ASSOC);
 
@@ -222,9 +446,18 @@ foreach ($filas as $f) {
     if (!$f['activo']) {
         continue;
     }
+    // La última columna dice si la cuenta ya tiene ficha, que es lo que la
+    // vuelve operativa. En la pantalla de Usuarios ese dato sale como
+    // "vinculado"; acá se imprime igual para que el estado de la demo se
+    // pueda confirmar de un vistazo sin abrir la web.
+    $ficha = $f['tipo_usuario'] === 'admin'
+        ? '(sin ficha, no la necesita)'
+        : (($f['tipo_usuario'] === 'medico' ? 'medico#' : 'paciente#')
+            . (int)($f['tipo_usuario'] === 'medico' ? $f['id_medico'] : $f['id_paciente']));
     echo str_pad((string)$f['id'], 5)
         . str_pad($f['tipo_usuario'], 10)
         . str_pad($f['email'], 32)
+        . str_pad($ficha, 28)
         . $f['nombre'] . PHP_EOL;
 }
 
