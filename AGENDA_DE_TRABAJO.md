@@ -92,6 +92,14 @@ profesor y quede registro del estado de cada tarea.
 | G3 | Tablas de Médicos y Pacientes: solo botón **Editar** (según permiso); se retira **Eliminar** de la UI. El DELETE protegido por rol (`requireRol(['admin'])`) sigue disponible vía API | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
 | G4 | Regresión del módulo de roles con cuentas descartables: `probar_roles.php` (nuevo: degradar a la última administradora → `409`) y `probar_roles_http.php` — todas las comprobaciones pasan | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
 
+### Fase H — PWA y arranque offline de la Web
+
+| N° | Actividad | Responsable | Inicio | Fin | Estado |
+| --- | --- | --- | --- | --- | --- |
+| H1 | PWA: `manifest.webmanifest`, íconos (PNG 192/512 + apple-touch-icon) y meta de instalación en `index.html` | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
+| H2 | Service Worker (`public/sw.js`) en producción: caparazón en caché, navegación red primero → copia local offline, assets con hash caché primero y refresh en segundo plano. **Se excluye `/api` de la caché por diseño** (datos clínicos siempre frescos) | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado (verificación en navegador pendiente en F1) |
+| H3 | Registrar el Service Worker solo en build (`import.meta.env.PROD`), sin dependencias nuevas (sin workbox ni vite-plugin-pwa) | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
+
 ---
 
 ## 4. Hitos clave
@@ -107,6 +115,7 @@ profesor y quede registro del estado de cada tarea.
 | Biometría (huella / Face ID) en `SaludWEB_Mobile` | 24/09/2026 ✔ |
 | SSO (Google / Microsoft) implementado en Mobile + Backend (`/api/auth/sso`) | 24/09/2026 ✔ |
 | Módulo de roles en la Web (pantalla Usuarios + carteles de permiso + datos ficticios de demo) | 29/09/2026 ✔ |
+| PWA: instalable + arranque offline (manifest, service worker, íconos) | 29/09/2026 ✔ |
 | Aplicación Mobile funcional | 06/10/2026 |
 | Pruebas integrales finalizadas | 09/10/2026 |
 | Docs finales + merge a `main` | 15/10/2026 |
