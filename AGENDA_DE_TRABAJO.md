@@ -117,7 +117,7 @@ Guía del docente **"Primera Funcionalidad en Tiempo Real: Del Polling a la Inme
 | I7 | Frontend: `src/api/realtime.js` (wrapper de `EventSource`) + hook `useEventosRealtime` con cleanup, reconexión y estado visible | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
 | I8 | Migración del Dashboard de polling a SSE: carga inicial por REST y refresco solo cuando llega un aviso | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
 | I9 | Verificación backend: `probar_tiempo_real.php` — tabla, índices, cursor, payload, autorización (4 permitidos + 4 rechazados), purga y latencia real | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado (18/18) |
-| I10 | Verificación E2E en dos navegadores (`verificar_tiempo_real.mjs`): el panel cambia sin recargar y en reposo no se pide `/api/estadisticas` | Equipo | 30/09/2026 | 30/09/2026 | ◐ Pendiente de ejecutar |
+| I10 | Verificación E2E en dos navegadores (`verificar_tiempo_real.mjs`): el panel cambia sin recargar y en reposo no se pide `/api/estadisticas` | Equipo | 30/09/2026 | 01/10/2026 | ✔ Completado (9/9) |
 | I11 | Documentación: `GUIA_TIEMPO_REAL.md` y actualización de los README de los tres repositorios | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
 
 ---

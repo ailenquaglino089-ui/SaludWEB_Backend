@@ -146,10 +146,31 @@ Cubre la tabla, los índices, el cursor, la integridad del payload, los cuatro c
 
 ```
 cd SaludWEB_Web
-node verificar_tiempo_real.mjs
+npx vite --port 5173          # en una terminal
+node verificar_tiempo_real.mjs   # en otra
 ```
 
-Abre dos contextos aislados con sesiones distintas, deja el panel del observador escuchando, reserva un turno desde el otro y comprueba que el número cambia **sin recargar**. También verifica que con la pantalla quieta no se hace ninguna petición a `/api/estadisticas`, que es la prueba de que el polling efectivamente se fue.
+Abre dos contextos aislados con sesiones distintas, deja el panel del observador escuchando,
+reserva un turno desde el otro y comprueba que el número cambia **sin recargar**.
+
+**Resultado obtenido: 9/9, con el contador pasando de "1" a "2" a los 541 ms.**
+
+De las nueve comprobaciones, la que más dice es la séptima: con la pantalla quieta, **cero**
+peticiones a `/api/estadisticas` en 12 segundos. Las seis primeras pasarían igual con el
+polling puesto, porque un panel que refresca cada 5 s también termina mostrando el número
+nuevo. Lo que distingue al tiempo real es justamente no consultar cuando no hay nada nuevo.
+
+Dos detalles de la prueba que costaron una corrección y quedan documentados porque son fáciles
+de volver a romper:
+
+- **La fecha del turno tiene que caer dentro del rango de las estadísticas.** El informe cuenta
+  de hace 30 días a hoy. Reservar para una fecha futura hace que la cita se cree, el evento
+  llegue, el panel recargue... y el número no cambie, porque esa cita está fuera del rango. El
+  síntoma parece "el tiempo real no funciona" y el problema era que la prueba miraba el lugar
+  equivocado. La prueba ahora busca sola un día hábil dentro de la ventana.
+- **Borrar el turno es solo de admin.** El paciente que reservó no puede eliminar su propio
+  turno (403), así que la limpieza usa el token del admin. La prueba borra lo que creó, así que
+  se puede correr las veces que haga falta.
 
 ## 9. Limitaciones conocidas
 
