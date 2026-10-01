@@ -18,6 +18,9 @@ la app móvil consumen esta misma API).
   para saber *a quién* se le asigna cada turno.
 - **Turnera (sistema de gestión de citas online)**: especialidades, disponibilidades,
   reserva/cancelación de turnos, agenda, notificaciones con token y estadísticas de gestión.
+- **Tiempo real con Server-Sent Events (SSE)**: cuando cambia un turno, el servidor empuja el
+  aviso al canal correspondiente y el panel se actualiza solo, sin polling. La documentación
+  completa está en **[`GUIA_TIEMPO_REAL.md`](GUIA_TIEMPO_REAL.md)**.
 - **SSO** con Google / Microsoft (PKCE, sin secret en el cliente).
 
 ## Contenido
@@ -31,15 +34,49 @@ core/                       →  Router, Response, JwtService, AuthMiddleware, C
 controllers/ services/      →  lógica HTTP y de negocio (una por recurso)
 persistence/                →  consultas SQL (patrón Repositorio)
 vendor/                     →  firebase/php-jwt (instalado con Composer)
+GUIA_TIEMPO_REAL.md         →  guía del módulo de tiempo real (SSE): leer primero
 sembrar_datos_demo.php      →  regenera las fichas de demostración (idempotente)
 probar_roles.php            →  suite de pruebas de roles y permisos
 probar_roles_http.php       →  idem, contra la API real por HTTP
 probar_vinculacion.php      →  suite de pruebas de vinculación de fichas
 probar_turnera.php          →  suite de pruebas del módulo turnera
+probar_tiempo_real.php      →  verificación del módulo de tiempo real (18 pruebas + latencia)
 verificar_turnera.php       →  verificación rápida de salud de la turnera
 AGENDA_DE_TRABAJO.md        →  planificación, hitos y pasos del proyecto
 PROJECT_BRIEF.md            →  brief del proyecto y entregables
 ```
+
+## Tiempo real: cómo funciona
+
+Esta API es REST y responde JSON, **con una excepción**: `GET /api/eventos` abre un canal de
+Server-Sent Events y mantiene la conexión abierta escribiendo texto plano.
+
+```
+GET /api/eventos?token=<jwt>&canal=<canal>
+```
+
+| Canal | Quién puede | Recibe |
+|---|---|---|
+| `tablero` | admin, médico | Indicadores del consultorio |
+| `mi-agenda` | médico | Cambios en su propia agenda |
+| `agenda:<id>` | solo admin | Agenda de un profesional |
+| `mis-turnos` | paciente | Sus propios turnos |
+
+El cliente pide el canal por nombre y **el backend lo traduce con el token**: un paciente que
+escriba `agenda:10` recibe 403. El identificador sale del token, nunca de la URL.
+
+**Lo que NO hace este módulo:** no guarda una copia de las citas ni de las estadísticas. La
+tabla `eventos_realtime` es una bandeja de avisos que se purga a los 30 minutos. Los números
+que se muestran siguen viniendo por REST desde la fuente única de verdad.
+
+**Verificación:**
+
+```
+http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
+```
+
+Diagnostica tabla, índices, cursor, autorización de los cuatro canales, purga, y mide la
+latencia real abriendo un canal HTTP y publicando un evento.
 
 ## Puesta en marcha
 
@@ -152,7 +189,16 @@ php probar_turnera.php        # turnera completa (requiere API en 127.0.0.1:8080
 php verificar_turnera.php     # chequeo rápido de salud de la turnera
 ```
 
+La del módulo de tiempo real se abre en el navegador, porque la medición de latencia necesita
+abrir una conexión HTTP contra el propio servidor:
+
+```
+http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
+```
+
 ## Documentación del proyecto
 
-- `AGENDA_DE_TRABAJO.md` — todas las fases, hitos, decisiones y resultados (F1 a F4).
+- **`GUIA_TIEMPO_REAL.md`** — el módulo de tiempo real completo: por qué SSE y no WebSocket,
+  cómo funciona el canal, cómo se autoriza, las pruebas y las limitaciones conocidas.
+- `AGENDA_DE_TRABAJO.md` — todas las fases, hitos, decisiones y resultados (F1 a F5).
 - `PROJECT_BRIEF.md` — brief y entregables.

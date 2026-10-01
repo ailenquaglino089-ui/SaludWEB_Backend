@@ -472,17 +472,32 @@ $router->delete('/api/prescripciones/{id}', function ($id) use ($prescripcionSer
 // prescripciones) sin modificarlas, para que el módulo nuevo quede
 // aislado y se pueda revisar por separado.
 //
-// APLICACIÓN DE LA GUÍA DE DATOS EN TIEMPO REAL
-// No se usa SSE, WebSocket, Firebase ni Supabase Realtime. El motivo está
-// escrito al inicio de CitaService y en EstadisticaService, pero se resume:
-//   • Response::json() hace exit, y SSE exige mantener el proceso vivo
-//   • No hay credenciales ni secretos disponibles en este entorno
-//   • La guía indica usar push SOLO cuando el retraso se percibe; una
+// CÓMO SE ACTUALIZAN LOS DATOS EN ESTA APLICACIÓN
+// -------------------------------------------------
+// La turnera NO usa tiempo real, y esa decisión sigue en pie para estas
+// pantallas. Las razones están al inicio de CitaService y se resumen acá:
+//   • La guía indica usar push SOLO cuando el retraso se percibe, y una
 //     agenda de turnos se puede refrescar por polling sin que se note
 //   • Duplicar el estado en una base "en tiempo real" genera dos fuentes
 //     de verdad que pueden discrepar, que es peor que estar 30 s desfasado
+//   • SSE exige mantener un proceso del servidor por conexión, y eso tiene
+//     un costo que solo conviene pagar donde el retraso se nota
 // En su lugar, polling adaptativo en el cliente: rápido cuando la pantalla
 // está activa y hay cambios, y con espera larga cuando nada cambia.
+//
+// LO QUE SÍ SE AGREGÓ DESPUÉS (y no contradice lo de arriba)
+// ----------------------------------------------------------
+// Se agregó un canal SSE para el PANEL DE GESTIÓN, donde el retraso SÍ se
+// percibe: un panel que dice "42 turnos" cuando ya hay 45 no informa, Engaña.
+// Ese endpoint es GET /api/eventos, definido más abajo en este archivo, y
+// arrastra la corrección de una premisa que era cierta pero irrelevante:
+// se decía que "Response::json() hace exit, y SSE exige mantener el proceso
+// vivo". El exit estaba en la clase que responde JSON, no en PHP. Se resuelve
+// con un endpoint que escribe texto plano y no pasa por Response.
+//
+// Y se mantiene la regla de fondo de la guía: no se duplicó el estado. La
+// tabla eventos_realtime guarda solo la señal "esto cambió", y los datos que
+// se muestran siguen viniendo por REST. Ver RealtimeService.
 // ============================================================
 
 // ============================================================
@@ -786,6 +801,89 @@ $router->patch('/api/usuarios/{id}/rol', function ($id) use ($usuarioRepo, $auth
     $authMiddleware->requireRol($payload, ['admin']);
     $controller = new UsuarioController(new UsuarioService($usuarioRepo), $payload);
     $controller->cambiarRol((int) $id);
+});
+
+// ============================================================
+// MÓDULO: "Primera funcionalidad en tiempo real" (SSE)
+// ============================================================
+// Estas rutas se suman a las existentes sin modificarlas.
+//
+// ESTA ES LA PARTE QUE CAMBIA LA DECISIÓN DOCUMENTADA MÁS ARRIBA
+// ------------------------------------------------------------
+// El bloque de la turnera (línea ~476) explica por qué se había elegido
+// polling en lugar de tiempo real, y el argumento principal era que
+// "Response::json() hace exit, y SSE exige mantener el proceso vivo".
+// Ese argumento era CORRECTO para todo lo que hace Response, pero no para el
+// problema: el exit estaba en la clase que responde JSON, no en PHP. La
+// solución no fue cambiar el backend entero ni copiar el estado a una base
+// "en vivo", sino agregar UN endpoint que escribe texto plano en vez de JSON
+// y, por lo tanto, no pasa por Response.
+//
+// Qué cambia con esto y qué no:
+//
+//   NO se duplica el estado. La tabla eventos_realtime guarda solo la señal
+//   de que algo cambió (ver RealtimeService). Los datos que se muestran
+//   siguen viniendo por REST de /api/citas y /api/estadisticas, que son los
+//   que validan permisos. Sigue habiendo una sola fuente de verdad: la tabla
+//   citas. Es la diferencia entre "duplicar el estado" y "avisar que cambió".
+//
+//   NO se rompe nada. El módulo es independiente: si se cerrara el canal, las
+//   reservas seguirían funcionando por HTTP normal. El polling de las otras
+//   pantallas (agenda del médico, mis turnos) se mantiene, y la razón es la
+//   que la propia guía da: usar push solo donde el retraso se percibe.
+//
+//   SÍ se reemplaza el polling del panel de gestión. Ahí el retraso SÍ se
+//   nota: si el panel dice "42 turnos" y en realidad ya hay 45, la cifra está
+//   mal. Un panel de gestión que muestra un número desactualizado no es una
+//   pantalla informativa, es una pantalla engañosa.
+//
+// ============================================================
+
+// GET /api/eventos - Canal en vivo (Server-Sent Events)
+//
+// PROTEGIDA, pero el token va en el QUERY y no en el encabezado Authorization.
+// No es una decisión estética: el objeto EventSource del navegador, que es
+// la API estándar de SSE, NO admite encabezados personalizados. Es la razón
+// por la que el token viaja en la URL, y por la que este endpoint verifica
+// el token por su cuenta en lugar de usar $authMiddleware->verificarToken().
+//
+// El canal NO es un parámetro libre: RealtimeService::resolverCanal() lo
+// traduce contra el token y rechaza (403) cualquier suscripción que no
+// corresponda al rol. Un paciente no puede abrir 'agenda:5' para ver la
+// agenda de un profesional, ni 'turnos:9' para ver los turnos de otro
+// paciente: los ids salen del token, nunca de la URL.
+$router->get('/api/eventos', function () use ($realtimeService, $jwtService, $authService) {
+    // Se reutiliza el servicio que ya está armado en bootstrap.php. Armar uno
+    // nuevo acá también funcionaría (es barato), pero dos instancias del mismo
+    // servicio en el mismo proceso es una forma de que se desincronicen: cada
+    // una lleva su propio contador de purgas y su propio estado interno.
+    $controller = new RealtimeController(
+        $realtimeService,
+        $jwtService,
+        $authService
+    );
+    // canal() abre la conexión y NO termina: es el único método del proyecto
+    // que se queda en un bucle escribiendo eventos.
+    $controller->canal();
+});
+
+// GET /api/eventos/estado - Diagnóstico del módulo (JSON normal)
+//
+// Sirve para la verificación de la guía: permite comprobar que el canal
+// recibió eventos, medir la latencia real de punta a punta y ver que la
+// tabla se purga. Además responde con un 401 o 403 claros si el token o el
+// canal no sirven, que es la diferencia entre "no llegó nada porque no pasó
+// nada" y "no llegó nada porque está roto".
+$router->get('/api/eventos/estado', function () use ($realtimeService, $jwtService, $authService) {
+    // Este endpoint verifica el token por su cuenta con el JwtService, igual
+    // que el canal. La diferencia es que no abre un stream: devuelve JSON con
+    // Response::ok() y termina como cualquier otra ruta.
+    $controller = new RealtimeController(
+        $realtimeService,
+        $jwtService,
+        $authService
+    );
+    $controller->estado();
 });
 
 // ============================================================

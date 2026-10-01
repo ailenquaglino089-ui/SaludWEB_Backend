@@ -152,6 +152,24 @@ require_once __DIR__ . '/../controllers/NotificacionController.php';
 require_once __DIR__ . '/../controllers/EspecialidadController.php';
 require_once __DIR__ . '/../controllers/EstadisticaController.php';
 
+// ============================================================
+// MÓDULO: "Primera funcionalidad en tiempo real" (SSE)
+// ============================================================
+// Sigue el mismo orden que el resto (contrato → implementación → servicio
+// → controlador) por el motivo ya explicado más arriba: el require del
+// contrato tiene que ir antes que la implementación, porque PHP la resuelve
+// en la declaración de la clase.
+//
+// El módulo de la turnera NO depende de este: el tiempo real es un extra
+// sobre una aplicación que ya funciona por REST. Si se borrara este bloque,
+// la turnera seguiría funcionando igual, solo perdería las actualizaciones
+// en vivo. Ese es el motivo de que nada de lo que hay acá sea obligatorio
+// para que una reserva de turno se guarde.
+require_once __DIR__ . '/../persistence/RealtimeRepositoryInterface.php';
+require_once __DIR__ . '/../persistence/RealtimeRepository.php';
+require_once __DIR__ . '/../services/RealtimeService.php';
+require_once __DIR__ . '/../controllers/RealtimeController.php';
+
 // Calcula la ruta base del proyecto
 // dirname($_SERVER['SCRIPT_NAME']) devuelve algo como "/Organizacion_Modulos"
 // rtrim() saca la barra del final si la hay
@@ -233,12 +251,46 @@ $contactoRepo = new ContactoRepository($pdo);
 // un proveedor real, este es el ÚNICO punto que hay que cambiar.
 $proveedorNotificaciones = new ProveedorNotificacionesStub();
 
+// MÓDULO DE TIEMPO REAL: repositorio de eventos
+//
+// Se instancia AQUÍ, antes que los servicios, y no al final del archivo como
+// estaba en un primer intento. El motivo es concreto y vale la pena
+// dejarlo escrito: CitaService necesita el publicador en su constructor (para
+// avisar cada vez que cambia un turno), así que el publicador tiene que existir
+// ANTES de armar el servicio de citas.
+//
+// El error de orden se manifiesta como un Warning de "variable indefinida" y
+// un TypeError del constructor, que es bastante críptico si no se sabe que el
+// problema es de secuencia. En un archivo donde las dependencias se arman en
+// cadena, el orden ES parte de la lógica.
+$realtimeRepo = new RealtimeRepository($pdo);
+// Solo la conexión: el repositorio no aplica reglas de negocio, solo guarda
+// y lee filas de eventos.
+
+// Publicador de avisos en vivo. Se reutiliza la misma instancia en las dos
+// rutas que lo necesitan (el servicio de citas y el controlador del canal),
+// en lugar de crear una por cada uno.
+$realtimeService = new RealtimeService($realtimeRepo);
+
 // Servicios de la turnera
 $citaService = new CitaService(
     $citaRepo,
     $disponibilidadRepo,
     $medicoRepo,
-    $pacienteRepo
+    $pacienteRepo,
+    // Quinto parámetro: el publicador de avisos en vivo. Se le pasa acá, y no
+    // dentro del constructor de cada ruta, por dos razones:
+    //   • CitaService se instancia UNA sola vez (esta línea). Si cada ruta
+    //     armara su propio CitaService, cada petición publicaría por su cuenta
+    //     y el objeto se reconstruiría en cada request sin motivo.
+    //   • El servicio de citas necesita poder avisar DENTRO de sus propios
+    //     métodos (crear, cambiarEstado). Si el aviso se publicara desde el
+    //     controlador, el servicio seguiría siendo usable desde otro contexto
+    //     (por ejemplo el script de pruebas) sin emitir eventos, y entonces
+    //     el tiempo real dependería de que el llamador se acuerde de avisar.
+    //     Publicando desde el servicio, cualquier camino que cambie un turno
+    //     avisa, sin excepción.
+    $realtimeService
 );
 $disponibilidadService = new DisponibilidadService($disponibilidadRepo, $medicoRepo);
 
@@ -254,6 +306,11 @@ $notificacionService = new NotificacionService(
 // Las estadísticas necesitan las citas, los médicos (quién atiende) y la
 // disponibilidad (cuántos turnos se ofrecieron en cada bloque)
 $estadisticaService = new EstadisticaService($citaRepo, $medicoRepo, $disponibilidadRepo);
+
+// El servicio de tiempo real ($realtimeService) y su repositorio
+// ($realtimeRepo) ya quedaron construidos más arriba, antes de CitaService,
+// y no se vuelven a instanciar acá: las rutas usan $realtimeRepo y
+// CitaService ya recibió $realtimeService.
 
 // Las variables $router, $pdo, y todos los servicios
 // quedan disponibles en routes.php que es quien incluye este archivo

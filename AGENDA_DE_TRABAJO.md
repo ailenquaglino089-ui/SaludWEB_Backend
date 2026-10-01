@@ -102,6 +102,24 @@ profesor y quede registro del estado de cada tarea.
 | H4 | Robustez offline en la UI: aviso global "Sin conexión" (`AvisoOffline`) impulsado por los eventos del navegador Y por las peticiones sin respuesta del cliente API; errores de red traducidos a mensajes en español | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado |
 | H5 | Verificación E2E en navegador real: `verificar_pwa.mjs` (Playwright, `playwright` como devDependency) — manifest, íconos, SW activo/controlador, offline con caparazón en caché, aviso visible y caída de `/api` fuera de caché | Equipo | 29/09/2026 | 29/09/2026 | ✔ Completado (12/12) |
 
+### Fase I — Tiempo real (SSE): del polling a la inmediatez
+
+Guía del docente **"Primera Funcionalidad en Tiempo Real: Del Polling a la Inmediatez"**, aplicada y documentada en `GUIA_TIEMPO_REAL.md`.
+
+| N° | Actividad | Responsable | Inicio | Fin | Estado |
+| --- | --- | --- | --- | --- | --- |
+| I1 | Decisión de arquitectura: SSE nativo en PHP frente a WebSockets / Firebase / Supabase, con la comparación de costos justificada por escrito | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
+| I2 | Tabla `eventos_realtime` (outbox de avisos, no de datos) con índices por `(canal, id)` y por fecha, retención de 30 min y purga periódica | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
+| I3 | Capa de persistencia `RealtimeRepository` + interfaz, con cursor por `id` autoincremental (nunca se repite un evento ni se entrega dos veces) | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
+| I4 | `RealtimeService`: canales declarativos (`tablero`, `mi-agenda`, `agenda:<id>`, `mis-turnos`), traducción del canal con el token y autorización por rol | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
+| I5 | `RealtimeController`: stream SSE con cabeceras correctas, heartbeat, cierre por tiempo de vida y soporte de `Last-Event-ID` | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
+| I6 | Emisión de eventos desde `CitaService` en crear / cambiar estado / eliminar, **sin** que una falla de la outbox revierta la operación de negocio | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
+| I7 | Frontend: `src/api/realtime.js` (wrapper de `EventSource`) + hook `useEventosRealtime` con cleanup, reconexión y estado visible | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
+| I8 | Migración del Dashboard de polling a SSE: carga inicial por REST y refresco solo cuando llega un aviso | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
+| I9 | Verificación backend: `probar_tiempo_real.php` — tabla, índices, cursor, payload, autorización (4 permitidos + 4 rechazados), purga y latencia real | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado (18/18) |
+| I10 | Verificación E2E en dos navegadores (`verificar_tiempo_real.mjs`): el panel cambia sin recargar y en reposo no se pide `/api/estadisticas` | Equipo | 30/09/2026 | 30/09/2026 | ◐ Pendiente de ejecutar |
+| I11 | Documentación: `GUIA_TIEMPO_REAL.md` y actualización de los README de los tres repositorios | Equipo | 30/09/2026 | 30/09/2026 | ✔ Completado |
+
 ---
 
 ## 4. Hitos clave
@@ -121,6 +139,7 @@ profesor y quede registro del estado de cada tarea.
 | Robustez offline: aviso global "Sin conexión" en la Web | 29/09/2026 ✔ |
 | Pruebas integrales de Backend registradas (suites `probar_*` + reglas por HTTP) | 29/09/2026 ✔ |
 | Integración `dev → main` en los 3 repositorios | 29/09/2026 ✔ |
+| Tiempo real con SSE: backend, panel migrado y 18/18 pruebas | 30/09/2026 ✔ |
 | Aplicación Mobile funcional | 06/10/2026 |
 | Pruebas integrales finalizadas | 09/10/2026 |
 | Docs finales + merge a `main` | 15/10/2026 |
@@ -135,6 +154,9 @@ profesor y quede registro del estado de cada tarea.
 3. Cambio de estado de prescripción: disponible para cualquier usuario autenticado.
 4. Alta/edición de pacientes y médicos: operaciones administrativas (admin). En la Web solo se expone **Editar**; la baja queda fuera de la UI (el endpoint sigue protegido por rol).
 5. Cambio de rol de un usuario: solo admin; **la última administradora no se puede degradar** (backend responde `409`).
+6. **Tiempo real sin duplicar estado**: el evento SSE solo *avisa* que algo cambió (tipo + identificadores); los datos se siguen pidiendo por REST desde `citas`.
+7. **Canales cerrados por rol**: un paciente que pida `agenda:<id>` recibe `403`; un canal inexistente recibe `422`. El identificador del canal sale del token, nunca de la URL.
+8. **Una falla al publicar un evento no rompe la reserva**: la publicación va en `try/catch` después del commit de la negocio.
 
 ## 6. Herramientas de seguimiento
 
@@ -143,6 +165,7 @@ profesor y quede registro del estado de cada tarea.
 - **Credenciales de prueba**: `medico@prueba.com/medico123`, `paciente@prueba.com/paciente123`. La administradora es `admin@salud.com` (contraseña personal, fuera del repo).
 - **Datos de demostración**: `php sembrar_datos_demo.php` deja los datos con nombres ficticios y una sola cuenta administradora (`admin@salud.com`, sin tocar). No modifica ninguna contraseña.
 - **Pruebas del módulo de roles**: `php probar_roles.php` (reglas de negocio) y `php probar_roles_http.php` (endpoints reales). Las dos crean cuentas descartables y las borran al terminar, así que no dependen de ninguna credencial fija ni dejan la base modificada.
+- **Pruebas del módulo de tiempo real**: abrir `http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php` en el navegador. Se ejecuta por HTTP a propósito: la medición de latencia necesita abrir un canal SSE contra el propio servidor, cosa que no se puede medir desde la línea de comandos.
 
 ---
 

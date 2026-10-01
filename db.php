@@ -361,6 +361,60 @@ try {
     }
 
     // ============================================================
+    // MÓDULO "TIEMPO REAL" (Server-Sent Events)
+    // ------------------------------------------------------------
+    // Tabla: eventos_realtime
+    //
+    // ESTA TABLA NO ES UNA SEGUNDA BASE DE DATOS.
+    // Es el equivalente en servidor del "outbox" de eventos que la guía
+    // describe, y su función es ÚNICA: avisar "algo cambió en el canal X"
+    // para que el navegador conectado por SSE sepa que tiene que volver a
+    // pedir los datos por REST.
+    //
+    // Por qué NO se guarda aquí el contenido que se muestra:
+    //   Si esta tabla guardara el turno completo con nombre del paciente,
+    //   estado y motivo, existirían DOS copias del mismo dato (esta y
+    //   `citas`) que se pueden desincronizar. Ese es justamente el
+    //   antipatrón de "fuente de verdad difusa" que la guía descarta.
+    //   Acá solo va la SEÑAL (qué pasó, sobre qué id, a qué canal) y los
+    //   datos los sigue leyendo el cliente del endpoint REST que ya
+    //   respeta los permisos. Si el dato cambia, cambia en un solo lugar.
+    //
+    // Por qué existe igual y no se manda directo desde el PHP que escribe:
+    //   El servidor web (Apache/PHP) no puede "empujar" nada: cada petición
+    //   termina cuando el script termina. Quien está esperando datos es el
+    //   NAVEGADOR, no el servidor. Hace falta un lugar donde dejar el aviso
+    //   para que el proceso que está escuchando lo encuentre al pasar.
+    //
+    // Canal: a quién le interesa el evento (ver RealtimeService::resolverCanal)
+    //   tablero             → todo cambio de turnos (admin y médicos)
+    //   agenda:<id_medico>  → cambios de la agenda de un profesional
+    //   turnos:<id_paciente>→ cambios de los turnos de un paciente
+    //
+    // tipo: qué pasó (cita_creada, cita_estado, cita_cancelada, cita_eliminada)
+    // datos: JSON con los identificadores mínimos para que el cliente sepa
+    //        qué tiene que volver a pedir. No contiene datos clínicos.
+    // creado_at: se usa para purgar los eventos viejos (ver RealtimeRepository::purgarAntiguos)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS eventos_realtime (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        canal VARCHAR(60) NOT NULL,
+        tipo VARCHAR(40) NOT NULL,
+        datos TEXT NULL,
+        creado_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_eventos_canal_id (canal, id),
+        INDEX idx_eventos_creado (creado_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // El índice (canal, id) es el que hace que el endpoint SSE sea barato: la
+    // consulta que hace el listener en cada vuelta es
+    //   SELECT ... WHERE canal = ? AND id > ? ORDER BY id LIMIT 50
+    // y con este índice es un recorrido corto desde el último id visto, no
+    // un escaneo de la tabla. Sin él, con la tabla creciendo, cada vuelta
+    // costaría más y el listener se iría retrasando.
+    //
+    // El índice por creado_at existe para la purga: borrar lo que ya no le
+    // sirve a nadie con "WHERE creado_at < ?" usa ese índice y no la tabla.
+
+    // ============================================================
     // INSERCIÓN DE DATOS DE EJEMPLO
     // ============================================================
     // Solo se insertan si las tablas están vacías
