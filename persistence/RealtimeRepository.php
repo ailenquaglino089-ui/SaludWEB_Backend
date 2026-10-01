@@ -16,15 +16,14 @@
 class RealtimeRepository implements RealtimeRepositoryInterface
 {
     // Conexión PDO que se usa para las cuatro operaciones
-    private $pdo;
+    private $pdo;   // conexión MySQL compartida con el resto de la aplicación
 
     /**
      * @param PDO $pdo Conexión inyectada desde bootstrap
      */
     public function __construct(PDO $pdo)
     {
-        // Se guarda la conexión recibida por inyección de dependencias
-        $this->pdo = $pdo;
+        $this->pdo = $pdo;   // se guarda la conexión recibida por inyección
     }
 
     /**
@@ -41,20 +40,22 @@ class RealtimeRepository implements RealtimeRepositoryInterface
         // JSON_UNESCAPED_UNICODE evita que las tildes de los mensajes se
         // guarden como \u00e1, que funciona igual pero vuelve la tabla
         // ilegible al revisarla a mano.
-        $json = json_encode($datos, JSON_UNESCAPED_UNICODE);
+        $json = json_encode($datos, JSON_UNESCAPED_UNICODE);   // array -> texto JSON
 
         $stmt = $this->pdo->prepare(
             "INSERT INTO eventos_realtime (canal, tipo, datos) VALUES (?, ?, ?)"
+            // Tres marcadores para tres columnas. El INSERT se arma una sola vez
+            // al preparar y se reutiliza en cada llamada.
         );
         // Consulta con marcadores: el canal, el tipo y el JSON viajan como
         // datos separados, nunca armando el texto de la consulta.
 
-        $stmt->execute([$canal, $tipo, $json]);
+        $stmt->execute([$canal, $tipo, $json]);   // se envían los tres valores
 
         // lastInsertId() devuelve el AUTO_INCREMENT de la fila que se acaba de
         // insertar. Ese id es el "cursor" del canal: el cliente lo recuerda y
         // la próxima vuelta pide solo lo que tenga id mayor.
-        return (int) $this->pdo->lastInsertId();
+        return (int) $this->pdo->lastInsertId();   // se castea a int: PDO devuelve string
     }
 
     /**
@@ -78,17 +79,20 @@ class RealtimeRepository implements RealtimeRepositoryInterface
              WHERE canal = ? AND id > ?
              ORDER BY id ASC
              LIMIT ?"
+            // WHERE canal = ?  -> solo los eventos de ESE canal (usa el índice)
+            // id > ?          -> solo lo que el cliente todavía no vio
+            // ORDER BY id ASC -> en orden, para que el cursor avance derecho
+            // LIMIT ?         -> tope por vuelta, como se explica arriba
         );
 
-        // El límite se bindea como entero nativo (PDO::PARAM_INT) porque el
-        // emulador de prepared statements interpretaría el string '50' como
-        // texto y MySQL lo rechazaría en la cláusula LIMIT.
-        $stmt->bindValue(1, $canal);
-        $stmt->bindValue(2, $ultimoId, PDO::PARAM_INT);
+        $stmt->bindValue(1, $canal);                    // string: nombre del canal
+        $stmt->bindValue(2, $ultimoId, PDO::PARAM_INT); // cursor del cliente
         $stmt->bindValue(3, max(1, $limite), PDO::PARAM_INT);
-        $stmt->execute();
+        // max(1, $limite) evita un LIMIT 0 (que no devolvería nada) o un límite
+        // negativo, que MySQL interpreta como error.
+        $stmt->execute();   // se manda la consulta ya con los valores puestos
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);   // todas las filas como arrays
     }
 
     /**
@@ -101,12 +105,13 @@ class RealtimeRepository implements RealtimeRepositoryInterface
     {
         $stmt = $this->pdo->prepare(
             "SELECT COALESCE(MAX(id), 0) FROM eventos_realtime WHERE canal = ?"
+            // MAX(id) sozinho devolvería NULL con el canal vacío, y un NULL
+            // convertido a int da 0 pero sin avisar: con COALESCE el 0 es
+            // explícito y el código de arriba no depende de MySQL ni de PHP
+            // para decidir el valor.
         );
-        $stmt->execute([$canal]);
-        // COALESCE devuelve 0 en vez de NULL cuando el canal está vacío, para
-        // que el llamador pueda usarlo directamente como cursor sin tener que
-        // comprobar que sea nulo.
-        return (int) $stmt->fetchColumn();
+        $stmt->execute([$canal]);   // el canal también va como marcador
+        return (int) $stmt->fetchColumn();   // una sola columna, una sola fila
     }
 
     /**
@@ -125,10 +130,12 @@ class RealtimeRepository implements RealtimeRepositoryInterface
         // encontrar. La fecha la pone siempre el mismo reloj: el del servidor.
         $stmt = $this->pdo->prepare(
             "DELETE FROM eventos_realtime WHERE creado_at < (NOW() - INTERVAL ? MINUTE)"
+            // INTERVAL con marcador es válido en MySQL: el ? se reemplaza por el
+            // número y la consulta queda "INTERVAL 30 MINUTE".
         );
-        $stmt->bindValue(1, max(1, $minutos), PDO::PARAM_INT);
-        $stmt->execute();
+        $stmt->bindValue(1, max(1, $minutos), PDO::PARAM_INT);  // el corte, en minutos
+        $stmt->execute();   // borra solo lo más viejo: los eventos de 30 min
 
-        return $stmt->rowCount();
+        return $stmt->rowCount();   // cuántas filas se fueron, para diagnóstico
     }
 }

@@ -97,23 +97,28 @@ class RealtimeService
             // varias publicaciones y una de ellas la modificara, el cambio
             // se vería en los demás canales.
             $this->repo->publicar($canal, $tipo, [
-                'tipo' => $tipo,
-                'id_cita' => (int)($cita['id'] ?? 0),
-                'id_medico' => (int)($cita['id_medico'] ?? 0),
+                'tipo' => $tipo,                            // qué pasó
+                'id_cita' => (int)($cita['id'] ?? 0),        // qué turno
+                'id_medico' => (int)($cita['id_medico'] ?? 0),   // con quién
                 'id_paciente' => (int)($cita['id_paciente'] ?? 0),
-                'fecha' => $cita['fecha'] ?? null,
+                'fecha' => $cita['fecha'] ?? null,           // cuándo
                 'hora' => $cita['hora'] ?? null,
-                'estado' => $cita['estado'] ?? null,
+                'estado' => $cita['estado'] ?? null,         // y en qué estado
             ]);
+            // Solo IDENTIFICADORES, nunca datos clínicos ni el detalle del turno.
+            // El frontend los usa para decidir qué recargar y vuelve a pedir los
+            // datos por REST. Mandar el turno entero en el evento convertiría el
+            // canal en una segunda copia del estado, que es justo lo que este
+            // diseño evita.
         }
 
-        $this->publicacionesDesdePurga++;
+        $this->publicacionesDesdePurga++;   // se cuenta esta publicación
 
         // Purga oportunista: se hace una vez cada PURGA_CADA publicaciones.
         if ($this->publicacionesDesdePurga >= self::PURGA_CADA) {
-            $this->publicacionesDesdePurga = 0;
+            $this->publicacionesDesdePurga = 0;      // reinicia el contador
             try {
-                $this->repo->purgarAntiguos(self::RETENCION_MINUTOS);
+                $this->repo->purgarAntiguos(self::RETENCION_MINUTOS);   // 30 min
             } catch (\Exception $e) {
                 // Si la purga falla, NO se interrumpe la operación de negocio.
                 // Perder una pasada de limpieza es un problema menor; lo que
@@ -132,14 +137,14 @@ class RealtimeService
      */
     public function canalesDeCita(array $cita): array
     {
-        $canales = [
+$canales = [
             // Canal global: los indicadores del consultorio (ocupación,
             // demanda, ausentismo) cambian con cualquier turno, no solo con
             // los de un profesional en particular.
-            self::CANAL_TABLERO,
+            self::CANAL_TABLERO,   // se publica siempre, pase lo que pase
         ];
 
-        $idMedico = (int)($cita['id_medico'] ?? 0);
+        $idMedico = (int)($cita['id_medico'] ?? 0);   // casts a int: ?? 0 evita null
         if ($idMedico > 0) {
             // Canal de la agenda del profesional: la pantalla del médico y la
             // agenda pública del consultorio se actualizan al reservar o al
@@ -148,14 +153,14 @@ class RealtimeService
         }
 
         $idPaciente = (int)($cita['id_paciente'] ?? 0);
-        if ($idPaciente > 0) {
+        if ($idPaciente > 0) {   // solo si la cita trae paciente asignado
             // Canal del paciente: para que "Mis turnos" se actualice en el
             // momento en que su turno se confirma, se cancela o alguien lo
             // cancela por él, sin que tenga que recargar la página.
             $canales[] = self::canalTurnos($idPaciente);
         }
 
-        return $canales;
+        return $canales;   // lista de destinos: 1, 2 o 3 canales
     }
 
     // ============================================================
@@ -199,7 +204,7 @@ class RealtimeService
             if (!in_array($rol, ['admin', 'medico'], true)) {
                 throw new \RuntimeException('No podés suscribirte a los indicadores del consultorio', 403);
             }
-            return self::CANAL_TABLERO;
+            return self::CANAL_TABLERO;   // el mismo nombre que pidió: no hay traducción
         }
 
         // ---- Canal de los turnos propios ----

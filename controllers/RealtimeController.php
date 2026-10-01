@@ -270,19 +270,21 @@ class RealtimeController
         // Momento en que se abrió esta conexión. Se usa para no superarse la
         // duración máxima y para mostrarlo en el evento de apertura.
 
-        $ultimoId = $this->ultimoIdInicial($canal);
-        // Cursor de lectura: desde qué evento se empieza a entregar.
+$ultimoId = $this->ultimoIdInicial($canal);
+        // Cursor de lectura: desde qué evento se empieza a entregar. Sale de
+        // resolverCanal() ya hecho, así que en este punto el canal está
+        // autorizado y no hay que volver a validarlo en cada vuelta.
 
         $this->escribirEvento('conectado', [
-            'canal' => $canal,
-            'ultimo_id' => $ultimoId,
-            'servidor' => date('c'),
+            'canal' => $canal,          // el canal real (puede diferir del pedido)
+            'ultimo_id' => $ultimoId,   // desde dónde va a leer
+            'servidor' => date('c'),    // fecha ISO del servidor, para diagnosticar
         ], null);
         // Evento de apertura. No lleva 'id' a propósito: es un mensaje de
         // estado de la conexión, no un hecho del consultorio. Si llevara id,
         // el cursor avanzaría por un evento que no existe en la tabla.
 
-        $ultimoLatido = time();
+        $ultimoLatido = time();   // se cuenta el latido desde ahora
 
         // ================================================================
         // PASO 8: El bucle de escucha
@@ -292,10 +294,10 @@ class RealtimeController
         //   a) el cliente se desconectó (detección por conexión abortada),
         //   b) se alcanzó SEGUNDOS_MAXIMOS y se cede el proceso,
         //   c) el script llega al final (por ejemplo, si el servidor corta).
-        while (true) {
+        while (true) {   // bucle infinito: termina solo por las tres condiciones de arriba
             // Se leen los eventos posteriores al cursor, hasta un máximo por
             // vuelta para no saturar si el canal acumuló muchos.
-            $eventos = $this->service->leerEventos($canal, $ultimoId, 50);
+            $eventos = $this->service->leerEventos($canal, $ultimoId, 50);   // tope: 50
 
             foreach ($eventos as $evento) {
                 // Se avanza el cursor ANTES de escribir. Si el script se
@@ -315,10 +317,17 @@ class RealtimeController
             if (!empty($eventos)) {
                 $ultimoLatido = time();
             } elseif ((time() - $ultimoLatido) >= self::LATIDO_SEGUNDOS) {
-                // Línea de comentario del protocolo: el navegador la ignora.
-                // Su único trabajo es demostrar que la conexión sigue viva.
+                // LÍNEA DE LATIDO
+                // --------------
+                // Es un comentario que empieza con ':' según el protocolo SSE:
+                // el navegador no lo pinta, no lo entrega como evento y no cambia
+                // el último id. Su único objetivo es mantener la conexión viva
+                // cuando no hay eventos. Sin esto, algunos proxies HTTP (Apache
+                // detrás de un balanceador, o ciertas configuraciones de nginx)
+                // cortan la conexión por inactividad, aunque en XAMPP suele
+                // aguantar más tiempo.
                 $this->escribirCrudo(": ping " . time() . "\n\n");
-                $ultimoLatido = time();
+                $ultimoLatido = time();   // reinicia el cronómetro de inactividad
             }
 
             // --------------------------------------------------

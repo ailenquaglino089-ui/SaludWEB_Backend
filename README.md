@@ -78,6 +78,35 @@ http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
 Diagnostica tabla, índices, cursor, autorización de los cuatro canales, purga, y mide la
 latencia real abriendo un canal HTTP y publicando un evento.
 
+### Poner el tiempo real en marcha, paso a paso
+
+1. **Levantar MySQL y Apache** desde el Control Panel de XAMPP.
+2. **Abrir el backend una vez** para que `db.php` cree la tabla `eventos_realtime`
+   automáticamente (no hay que importar ningún SQL):
+   ```
+   http://localhost/Workspace_SaludWEB/SaludWEB_Backend/api/health
+   ```
+   Tiene que responder `200`.
+3. **Confirmar que el canal está montado**:
+   ```
+   http://localhost/Workspace_SaludWEB/SaludWEB_Backend/api/eventos/estado
+   ```
+   Responde con los canales admitidos y los tipos de evento.
+4. **Abrir un canal a mano** (queda la pantalla esperando eventos):
+   ```
+   http://localhost/Workspace_SaludWEB/SaludWEB_Backend/api/eventos?token=<JWT>&canal=tablero
+   ```
+   Aparece `retry: 3000` y un evento `conectado`. A partir de ahí, cada turno que se
+   reserve aparece solo.
+5. **Probar todo el módulo**:
+   ```
+   http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
+   ```
+   18 verificaciones, incluyendo los cuatro rechazos por rol.
+
+> El paso 4 sirve para ver el stream crudo. Para verlo **aplicado a la interfaz** hay que
+> levantar el frontend: ver la guía de la Web.
+
 ## Puesta en marcha
 
 ### Requisitos
