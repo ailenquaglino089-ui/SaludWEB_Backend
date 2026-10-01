@@ -32,6 +32,22 @@ class CitaService
     // Repositorio de pacientes (para verificar que el paciente existe y está activo)
     private PacienteRepository $pacienteRepo;
 
+    // Servicio de tiempo real, para publicar un aviso cuando cambia un turno.
+    //
+    // Es NULLABLE a propósito, y esa es la decisión de diseño importante:
+    // el módulo de tiempo real es un extra sobre la turnera, no un requisito
+    // de la turnera. Con el tipo declarado sin "?" y la propiedad sin valor
+    // inicial, PHP exigiría que TODAS las instalaciones loantianaran.
+    // Declarándolo opcional:
+    //   • se puede probar CitaService con dobles de repositorio sin montar
+    //     el canal en vivo,
+    //   • una instalación donde la tabla eventos_realtime no llegara a
+    //     crearse no rompe las reservas, solo pierde la actualización
+    //     instantánea,
+    //   • y la comprobación del "if" al publicar deja obvio que es un
+    //     extra, no el camino principal.
+    private ?RealtimeService $realtime = null;
+
     // Días de anticipación máxima que se aceptan para reservar.
     // Sin un tope, un paciente podría agendar turnos a un año vista y el
     // profesional quedaría sin visibilidad de su agenda real.
@@ -41,20 +57,26 @@ class CitaService
      * Constructor con inyección de dependencias
      * @param CitaRepository $repo
      * @param DisponibilidadRepository $disponibilidadRepo
-     * @param MedicoRepository $medicoRepo
+    * @param MedicoRepository $medicoRepo
      * @param PacienteRepository $pacienteRepo
+    * @param RealtimeService|null $realtime Publicador de avisos en vivo (opcional)
      */
     public function __construct(
         CitaRepository $repo,
         DisponibilidadRepository $disponibilidadRepo,
         MedicoRepository $medicoRepo,
-        PacienteRepository $pacienteRepo
+        PacienteRepository $pacienteRepo,
+        ?RealtimeService $realtime = null
     ) {
         // Inyecta y guarda los repositorios para usarlos en toda la clase
         $this->repo = $repo;
         $this->disponibilidadRepo = $disponibilidadRepo;
         $this->medicoRepo = $medicoRepo;
         $this->pacienteRepo = $pacienteRepo;
+        // El quinto parámetro es opcional: el valor por defecto null deja
+        // funcionando el servicio igual que antes, sin tocar las pruebas
+        // existentes ni ninguna otra forma de construirlo.
+        $this->realtime = $realtime;
     }
 
     // ============================================================
@@ -662,8 +684,18 @@ class CitaService
             throw $e;
         }
 
+        // --------------------------------------------------
+        // PASO 8: Avisar en vivo que hay un turno nuevo
+        // --------------------------------------------------
+        // Se publica DESPUÉS de guardar, nunca antes: si el INSERT fallara,
+        // se estaría anunciando un turno que no existe, y el panel del
+        // consultorio mostraría un número más que no corresponde.
+        $cita = $this->repo->obtenerPorId($id);
+
+        $this->avisarEnVivo('cita_creada', $cita);
+
         // Se devuelve la cita recién creada, ya con los nombres resueltos
-        return $this->repo->obtenerPorId($id);
+        return $cita;
     }
 
     // ============================================================
@@ -714,7 +746,19 @@ class CitaService
         // o mantiene el horario en una sola operación
         $this->repo->cambiarEstado($id, $nuevoEstado);
 
-        return $this->repo->obtenerPorId($id);
+        $actualizada = $this->repo->obtenerPorId($id);
+
+        // El tipo de evento distingue cancelar de confirmar, porque para el
+        // paciente NO son la misma cosa: una cancelación libera un horario
+        // (y le avisa al resto), mientras que una confirmación no cambia la
+        // agenda. Mandar un solo tipo obligaría al frontend a adivinar mirando
+        // el estado, cuando el backend ya lo sabe con certeza.
+        $this->avisarEnVivo(
+            $nuevoEstado === 'cancelada' ? 'cita_cancelada' : 'cita_estado',
+            $actualizada
+        );
+
+        return $actualizada;
     }
 
     /**
@@ -747,12 +791,57 @@ class CitaService
     public function eliminar(int $id, array $contexto = []): void
     {
         // Verifica que la cita exista
-        $this->obtenerPorId($id);
+        $cita = $this->obtenerPorId($id);
         // Solo el administrador puede borrar
         if (($contexto['rol'] ?? '') !== 'admin') {
             throw new \RuntimeException('Solo un administrador puede eliminar citas', 403);
         }
         $this->repo->eliminar($id);
+
+        // El aviso se publica con los datos que la cita tenía ANTES de
+        // borrarse. Si se publicara después, ya no habría nada que leer y el
+        // evento viajaría sin los identificadores, que son justamente los
+        // que el cliente necesita para saber qué tiene que recargar.
+        $this->avisarEnVivo('cita_eliminada', $cita);
+    }
+
+    // ============================================================
+    // AVISO EN VIVO
+    // ============================================================
+
+    /**
+     * Publica un aviso de cambio de turno en el canal de tiempo real.
+     *
+     * El método está aislado en un solo lugar, y no disperso en los tres
+     * puntos donde cambia una cita, por dos razones concretas:
+     *
+     *   1. Centraliza el try/catch. Publicar un aviso es un extra: si falla
+     *      (tabla que no existe, sin permiso, la base saturada), la reserva
+     *      de turno NO puede fallar por eso. Ya se guardó en la base, y
+     *      devolver un error haría que el usuario creyera que no se reservó,
+     *      cuando en realidad sí: eso hace que reintente y termine con dos
+     *      turnos.
+     *   2. Centraliza el chequeo de que el módulo esté montado. Si
+     *      $this->realtime es null (instalación sin el extra), la llamada es
+     *      un no-op silencioso y el resto del módulo sigue igual.
+     *
+     * @param string $tipo Tipo de evento
+     * @param array  $cita Datos de la cita afectada
+     */
+    private function avisarEnVivo(string $tipo, array $cita): void
+    {
+        if ($this->realtime === null) {
+            return;
+            // El módulo de tiempo real no está montado en esta instalación.
+        }
+
+        try {
+            $this->realtime->notificarCita($tipo, $cita);
+        } catch (\Exception $e) {
+            // Falla al publicar el aviso: se ignora a propósito (ver punto 1).
+            // No se registra en el log porque en desarrollo aparecería en
+            // pantalla y ocultaría el mensaje real de la operación.
+        }
     }
 
     // ============================================================

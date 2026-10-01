@@ -517,6 +517,39 @@ class AuthService
             throw new \RuntimeException('Sesión no verificada', 401);
         }
 
+        // Todo el trabajo real está en el método de abajo. Acá solo se le pasa
+        // el payload del middleware.
+        return $this->contextoDesdePayload($payload);
+    }
+
+    /**
+     * Arma el contexto a partir de un payload YA verificado, sin depender del
+     * middleware.
+     *
+     * POR QUÉ HACE FALLA ESTE SEGUNDO MÉTODO
+     * ---------------------------------------
+     * No es una comodidad, es la solución a un problema concreto: el canal de
+     * tiempo real (SSE) verifica el token por su cuenta porque EventSource no
+     * puede mandar el encabezado Authorization, así que esa ruta nunca pasa por
+     * AuthMiddleware::verificarToken() y por lo tanto no deja nada en el
+     * contexto estático. Si RealtimeController llamara a contextoDePeticion(),
+     * recibiría "Sesión no verificada" con un token perfectamente válido.
+     *
+     * Hay dos caminos que NO son dumping en esta arquitectura:
+     *   • Meter el payload del query dentro de AuthMiddleware (un setter).
+     *     Funciona, pero es un canal lateral: cualquier endpoint podría
+     *     escribir el contexto y saltarse la verificación. Un middleware existe
+     *     justamente para que eso no sea posible.
+     *   • Esta forma: quien YA tiene el payload verificado en la mano pide
+     *     explícitamente el contexto. La diferencia es que hay que tener el
+     *     token delante para poder llamar, y no alcanza con que alguien lo
+     *     haya dejado escrito en un lugar compartido.
+     *
+     * @param array $payload Payload ya validado por JwtService
+     * @return array ['rol', 'id_usuario', 'id_paciente', 'id_medico']
+     */
+    public function contextoDesdePayload(array $payload): array
+    {
         // Se resuelve el usuario una sola vez para traer los vínculos
         $usuario = $this->obtenerPorId((int)($payload['sub'] ?? 0));
 
