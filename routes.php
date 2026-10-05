@@ -49,8 +49,14 @@ if ($origen !== '' && in_array($origen, $corsOrigenes, true)) {
     header('Access-Control-Allow-Credentials: true');
     // Declara qué métodos HTTP acepta el servidor para esta ruta cruzada
     header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    // Declara qué encabezados puede enviar el cliente: Content-Type (JSON) y Authorization (token JWT)
-    header('Access-Control-Allow-Headers: Content-Type, Authorization');
+    // Declara qué encabezados puede enviar el cliente. La lista tiene que
+    // incluir TODOS los que la SPA mande de forma personalizada, no solo los
+    // "habituales": si falta uno, el navegador rechaza la petición en el
+    // preflight y nunca llega al backend, así que el error se ve como un
+    // fallo de red sin causa apparent. X-Correlation-Id es el que usa el
+    // cliente HTTP del frontend para correlacionar un error con los logs del
+    // servidor (ver src/api/client.js).
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Correlation-Id');
     // Avisa a las cachés que la respuesta varía según el Origin, para no mezclar respuestas de orígenes distintos
     header('Vary: Origin');
 }
