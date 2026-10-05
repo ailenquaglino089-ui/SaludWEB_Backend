@@ -231,3 +231,66 @@ http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
   cómo funciona el canal, cómo se autoriza, las pruebas y las limitaciones conocidas.
 - `AGENDA_DE_TRABAJO.md` — todas las fases, hitos, decisiones y resultados (F1 a F5).
 - `PROJECT_BRIEF.md` — brief y entregables.
+
+## Calidad del software
+
+Aplicacion de "Calidad Profesional del Software": auditoria, refactorizacion DRY, logging
+estructurado con identificador de correlacion y suite de pruebas. El detalle completo esta en
+**`CALIDAD_PROFESIONAL_SOFTWARE.md`**.
+
+### Archivos nuevos de infraestructura
+
+| Archivo | Responsabilidad |
+|---|---|
+| `core/CorrelationId.php` | Genera y valida el `X-Correlation-Id` de cada peticion. |
+| `core/Logger.php` | Logs en JSON Lines con niveles, redaccion de secretos y correlacion. |
+| `core/Peticion.php` | Manejadores globales de excepcion y cierre de peticion con latencia. |
+| `core/Validador.php` | Validaciones de email, contrasena y textos en un solo lugar (DRY). |
+| `tests/TestCase.php` | Arnes de pruebas propio, sin dependencias. |
+| `tests/run.php` | Runner con descubrimiento automatico de pruebas. |
+
+### Correr las pruebas
+
+```bash
+php tests/run.php              # toda la suite (49 pruebas)
+php tests/run.php Logger       # solo las clases que contengan "Logger"
+php tests/run.php --lista      # ver las clases disponibles
+```
+
+La suite **no toca la base de datos**: corre sin MySQL y sin datos sembrados, en cualquier
+maquina con PHP 8. Devuelve codigo 0 si todo pasa y 1 si hay fallos, que es lo que necesita un
+pipeline.
+
+### Configuracion de logs
+
+En `.env`:
+
+```
+LOG_LEVEL=INFO         # DEBUG | INFO | WARN | ERROR
+LOG_DIR=storage/logs   # ruta relativa (se ancla a la raiz del backend) o absoluta
+LOG_SERVICE=saludweb-api
+```
+
+Los archivos se escriben en `storage/logs/app-YYYY-MM-DD.log`. Esa carpeta esta en
+`.gitignore`, asi que los logs nunca se suben al repositorio.
+
+### Correlacion de punta a punta
+
+1. El navegador manda `X-Correlation-Id` en cada peticion.
+2. `CorrelationId` lo adopta si cumple el formato, o genera uno propio (`cid_...`).
+3. Todas las lineas de log de esa peticion quedan con el mismo `correlation_id`.
+4. `Response::error()` devuelve el id en el cuerpo del error, asi el usuario puede reportarlo.
+
+Para encontrar una peticion concreta:
+
+```bash
+grep "cid_a1b2c3d4e5f60718" storage/logs/app-$(date +%F).log
+```
+
+### Reglas fijadas
+
+- Ningun secreto en el log: contrasenas, tokens, cookies y texto clinico se redactan antes de
+  escribir. Los datos personales se enmascaran dejando cuatro caracteres.
+- Los errores de login no dicen que fallo: ni el email ni la contrasena.
+- Todo error de negocio pasa por `Response::error()`, que ya registra y ya agrega el
+  `requestId`. Un `echo` con `http_response_code` rompe la correlacion.

@@ -44,37 +44,27 @@ class AuthService
      */
     public function registro(array $data): array
     {
-        // Validar email obligatorio, formato y longitud máxima
-        // Normaliza el email: pasa a minúsculas y elimina espacios exteriores (?? '' evita error si falta la clave)
-        $email = strtolower(trim($data['email'] ?? ''));
-        // Valida que el email no esté vacío y tenga formato válido (FILTER_VALIDATE_EMAIL)
-        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            // Lanza excepción de validación con código HTTP 422 (Unprocessable Entity)
-            throw new \InvalidArgumentException('Email inválido', 422);
-        }
-        // Valida la longitud máxima del email para no superar la columna de la tabla
-        if (strlen($email) > 255) {
-            // Lanza excepción de validación con código HTTP 422
-            throw new \InvalidArgumentException('Email inválido', 422);
-        }
+        // ---------------------------------------------------------------
+        // Validación delegando en Validador (Clean Code - DRY)
+        // ---------------------------------------------------------------
+        // Estas reglas estaban escritas acá a mano y repetidas en otros
+        // servicios. Ahora viven en core/Validador.php: una sola
+        // implementación, probada por separado, y el mismo mensaje y el
+        // mismo código HTTP que antes, para no romper a los clientes.
+        //
+        // El email devuelve el valor NORMALIZADO (minúsculas, sin espacios):
+        // por eso se asigna a una variable y no se descarta el resultado.
+        $email = Validador::email($data['email'] ?? '');
 
-        // Validar nombre obligatorio + sanitizar (XSS) y limitar longitud
-        // strip_tags() elimina etiquetas HTML/JS del nombre (mitiga XSS); trim() limpia espacios extremos
-        $nombre = strip_tags(trim($data['nombre'] ?? ''));
-        // Valida que el nombre no esté vacío y no supere los 100 caracteres
-        if (empty($nombre) || strlen($nombre) > 100) {
-            // Lanza excepción de validación con código HTTP 422
-            throw new \InvalidArgumentException('El nombre es obligatorio (máx. 100 caracteres)', 422);
-        }
+        // El nombre: se sanea (anti-XSS) y se acota a 100 caracteres.
+        $nombre = Validador::textoObligatorio(
+            $data['nombre'] ?? '',
+            100,
+            'El nombre es obligatorio (máx. 100 caracteres)'
+        );
 
-        // Validar contraseña (mín. 6, máx. 72 por límite de bcrypt)
-        // Lee la contraseña enviada, o cadena vacía si el campo no viene
-        $password = $data['password'] ?? '';
-        // Valida el largo mínimo (6) y máximo (72, límite de bytes procesados por bcrypt)
-        if (strlen($password) < 6 || strlen($password) > 72) {
-            // Lanza excepción de validación con código HTTP 422
-            throw new \InvalidArgumentException('La contraseña debe tener entre 6 y 72 caracteres', 422);
-        }
+        // La contraseña: mínimo 6, máximo 72 (límite de bytes de bcrypt).
+        $password = Validador::password($data['password'] ?? '');
 
         // Verificar que el email no exista
         // Prepara una consulta parametrizada (protege contra inyección SQL)
@@ -83,6 +73,12 @@ class AuthService
         $stmt->execute([$email]);
         // Si fetch() devuelve una fila, el email ya está registrado
         if ($stmt->fetch()) {
+            // Impedir duplicar cuentas con el mismo email también es un
+            // evento que se registra: alguien que ya tiene cuenta y pide
+            // otra con el mismo email es el patrón típico de un formulario
+            // mal construido o de un intento de aumento de cuentas.
+            Logger::warn('registro rechazado por email duplicado', ['email' => $email]);
+
             // Impide duplicar cuentas con el mismo email: HTTP 422
             throw new \InvalidArgumentException('El email ya está registrado', 422);
         }
@@ -135,6 +131,16 @@ class AuthService
         // Obtiene el ID autogenerado por MySQL para el registro recién insertado
         $userId = (int) $this->pdo->lastInsertId();
 
+        // Evento normal del sistema (INFO): una cuenta nueva se creó. Se
+        // registra el id y el rol, y el email viaja enmascarado por el Logger
+        // ("j***"), porque la clave del contexto se llama "email" y eso activa
+        // el enmascarado automático. Nadie tiene que acordarse de limpiarlo.
+        Logger::info('usuario registrado', [
+            'usuario_id' => $userId,
+            'rol'        => $tipoUsuario,
+            'email'      => $email,
+        ]);
+
         // Devolver el usuario creado (sin contraseña)
         // Devuelve los datos del usuario recién creado (sin exponer el hash de la contraseña)
         return $this->obtenerPorId($userId);
@@ -151,14 +157,13 @@ class AuthService
      */
     public function login(string $email, string $password): array
     {
-        // Validar que el email sea válido (y no exceder longitud razonable)
-        // Normaliza el email (minúsculas y sin espacios extremos)
-        $email = strtolower(trim($email));
-        // Valida formato, presencia y longitud máxima del email en una sola condición
-        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
-            // Mensaje genérico (no revela si el email existe) con código 401 Unauthorized
-            throw new \InvalidArgumentException('Email o contraseña inválidos', 401);
-        }
+        // Valida el formato del email delegando en Validador. Ojo con el
+        // mensaje: es genérico a propósito ("email o contraseña inválidos")
+        // para que la respuesta no permita distinguir "ese email no existe"
+        // de "la contraseña está mal". Esa indistinguibilidad es una medida de
+        // seguridad: si no, un atacante puede listar los usuarios que tienen
+        // cuenta solo probando emails.
+        $email = Validador::email($email, 'Email o contraseña inválidos', 401);
 
         // Buscar el usuario por email
         // Consulta parametrizada que además solo trae usuarios con activo = 1
@@ -170,6 +175,12 @@ class AuthService
 
         // Si el usuario no existe, se lanza el mismo error genérico (evita enumerar usuarios válidos)
         if (!$usuario) {
+            // WARN con el motivo real ("usuario inexistente") y respuesta
+            // genérica para el cliente. Así el operador de turno puede ver
+            // que hay un patrón de intentos contra cuentas que no existen,
+            // sin que el atacante se entere de la diferencia.
+            Logger::warn('login rechazado: el usuario no existe', ['email' => $email]);
+
             // HTTP 401: credenciales inválidas
             throw new \InvalidArgumentException('Email o contraseña inválidos', 401);
         }
@@ -178,6 +189,15 @@ class AuthService
         // Compara el hash almacenado con la contraseña ingresada
         // password_verify() compara el hash bcrypt guardado contra la contraseña en texto plano
         if (!password_verify($password, $usuario['password'])) {
+            // WARN: acá SÍ se puede nombrar al usuario, porque el registro de
+            // esa IP no lo va a leer el atacante: es el log interno del
+            // servidor. La contraseña jamás se registra (ni el hash).
+            Logger::warn('login rechazado: contraseña incorrecta', [
+                'usuario_id' => (int) $usuario['id'],
+                'rol'        => $usuario['tipo_usuario'],
+                'email'      => $email,
+            ]);
+
             // HTTP 401: la contraseña no coincide con el hash almacenado
             throw new \InvalidArgumentException('Email o contraseña inválidos', 401);
         }
@@ -190,16 +210,29 @@ class AuthService
         // Delega en el servicio JWT la generación del token firmado
         $emitido = $this->jwt->generar($usuario);
 
-// Devolver usuario sin contraseña + token JWT
-    // Construye el array de respuesta: datos del usuario + token y su vencimiento en formato ISO 8601
-    return [
-        'id' => (int) $usuario['id'],
-        'email' => $usuario['email'],
-        'nombre' => $usuario['nombre'],
-        'tipo_usuario' => $usuario['tipo_usuario'],
-        'token' => $emitido['token'],
-        'expires_at' => date('c', $emitido['expires_at']),
-    ];
+        // Evento normal (INFO). Es el log más consultado en una auditoría:
+        // dice quién entró, cuándo y desde dónde. El email va enmascarado.
+        Logger::info('login correcto', [
+            'usuario_id' => (int) $usuario['id'],
+            'rol'        => $usuario['tipo_usuario'],
+            'email'      => $email,
+        ]);
+
+        // Construye el array de respuesta: datos del usuario + token y su
+        // vencimiento en formato ISO 8601. Se devuelve desde una variable
+        // para que el cierre del método quede alineado con el resto del
+        // archivo (antes el return quedaba sin sangrar dentro del bloque).
+        $respuesta = [
+            'id' => (int) $usuario['id'],
+            'email' => $usuario['email'],
+            'nombre' => $usuario['nombre'],
+            'tipo_usuario' => $usuario['tipo_usuario'],
+            'token' => $emitido['token'],
+            'expires_at' => date('c', $emitido['expires_at']),
+        ];
+
+        // Devuelve usuario sin contraseña + token JWT
+        return $respuesta;
     }
 
     /**
@@ -216,15 +249,26 @@ class AuthService
     {
         // Estructura de un JWT: header.payload.firma (exactamente dos puntos)
         if ($idToken === '' || substr_count($idToken, '.') !== 2) {
+            // WARN: un id_token con estructura inválida es señal de un
+            // cliente mal implementado o de un intento de acceso directo al
+            // endpoint sin pasar por el proveedor. El token no se registra.
+            Logger::warn('login SSO rechazado: id_token con formato inválido', [
+                'proveedor' => $provider,
+            ]);
+
             throw new \InvalidArgumentException('Token de SSO inválido', 401);
         }
         // Valida firma y claims contra el proveedor; devuelve los claims verificados
         $claims = $this->validarIdToken($provider, $idToken);
         // El email es la llave que une la cuenta externa con la cuenta local de SaludWEB
-        $email = strtolower(trim($claims['email'] ?? ''));
-        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            throw new \InvalidArgumentException('El proveedor no devolvió un email válido', 401);
-        }
+        // Misma validación del login por contraseña, pero con el mensaje del
+        // módulo de SSO: acá el problema no fue que el usuario escribiera mal
+        // el email, sino que el proveedor no devolvió uno utilizable.
+        $email = Validador::email(
+            $claims['email'] ?? '',
+            'El proveedor no devolvió un email válido',
+            401
+        );
 
         // Buscar la cuenta local: SSO habilita SOLO cuentas existentes y activas
         // (regla de negocio: no se auto-crean cuentas admin/medico desde afuera)
@@ -232,6 +276,15 @@ class AuthService
         $stmt->execute([$email]);
         $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$usuario) {
+            // WARN: login con Google/Microsoft sobre una cuenta que no existe
+            // en SaludWEB. Si aparece mucho, es señal de que alguien espera
+            // que el SSO cree cuentas automáticamente (que es justo lo que la
+            // regla de negocio prohíbe).
+            Logger::warn('login SSO rechazado: no hay cuenta local con ese email', [
+                'proveedor' => $provider,
+                'email'     => $email,
+            ]);
+
             throw new \InvalidArgumentException(
                 'No existe una cuenta de SaludWEB con ese email. Usá tu email y contraseña.',
                 401
@@ -242,6 +295,14 @@ class AuthService
         $_SESSION['usuario_id'] = $usuario['id'];
         // Emite el JWT de SaludWEB con el MISMO servicio que el login por contraseña
         $emitido = $this->jwt->generar($usuario);
+
+        // INFO: el login por SSO también es un acceso, y tiene que verse en el
+        // log de auditoría igual que el login por contraseña.
+        Logger::info('login SSO correcto', [
+            'usuario_id' => (int) $usuario['id'],
+            'rol'        => $usuario['tipo_usuario'],
+            'proveedor'  => $provider,
+        ]);
 
         // Respuesta idéntica a login(): el cliente se autentica con el campo "token"
         return [

@@ -39,6 +39,15 @@ class AuthMiddleware
 
         // Si no venía ningún token en la petición...
         if ($token === null) {
+            // WARN: no es un ERROR porque el sistema funcionó correctamente.
+            // Es un cliente que llama a un endpoint protegido sin
+            // credenciales, y esa información sirve para detectar clientes
+            // mal configurados, no para detenerse tres veces por minuto.
+            Logger::warn('petición a endpoint protegido sin token', [
+                'peticion' => Peticion::atributos(),
+                // El motivo del rechazo se registra; el token NUNCA.
+            ]);
+
             // Responde 401 y detiene la ejecución (Response::error() hace exit)
             Response::error('Token no proporcionado', 401);
         }
@@ -52,7 +61,17 @@ class AuthMiddleware
             // Devuelve el payload para que el controlador sepa quién es el usuario
             return $payload;
         } catch (\Exception $e) {
-            // Token manipulado, mal formado o expirado: responde 401 y corta
+            // Token manipulado, mal formado o expirado.
+            // WARN con el motivo técnico de fondo (el mensaje de la
+            // excepción dice si fue firma o expiración) y NUNCA con el
+            // token: un log con el token es una credencial escrita en disco.
+            Logger::warn('token inválido o expirado: ' . $e->getMessage(), [
+                'peticion' => Peticion::atributos(),
+            ]);
+
+            // El cliente recibe el mismo mensaje de siempre (401), sin
+            // detalles: distinguir "expiró" de "firmado mal" en la respuesta
+            // ayudaría a un atacante a adivinar.
             Response::error('Token inválido o expirado', 401);
         }
     }
@@ -71,6 +90,17 @@ class AuthMiddleware
         // Si el rol del usuario no está en la lista de roles permitidos...
         // in_array con true = comparación estricta (mismo tipo y valor)
         if (!in_array($rol, $roles, true)) {
+            // WARN: el token era válido, pero el usuario intentó una acción
+            // fuera de su permiso. Esto SÍ es una señal valiosa: un paciente
+            // que llama a un endpoint de administración puede ser un cliente
+            // con un bug o un intento de escalada de privilegios.
+            Logger::warn('acceso denegado por rol', [
+                'rol_actual'   => $rol,
+                'roles_permitidos' => $roles,
+                'usuario_id'   => $payload['sub'] ?? null,
+                'peticion'     => Peticion::atributos(),
+            ]);
+
             // Responde 403 Forbidden y detiene la ejecución
             Response::error('Forbidden: no tenés permisos para realizar esta acción', 403);
         }

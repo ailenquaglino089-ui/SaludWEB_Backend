@@ -42,8 +42,8 @@ class PacienteService
      */
     public function obtenerPaginado(int $pagina = 1, int $porPagina = 10, string $busqueda = ''): array
     {
-        // Sanitiza y acota la búsqueda (anti-XSS + espacios; el LIKE se arma en el repo)
-        $busqueda = strip_tags(trim($busqueda));
+        // Sanea la búsqueda con la función compartida (Clean Code - DRY).
+        $busqueda = Validador::textoLimpio($busqueda);
         // Normaliza los parámetros numéricos para evitar valores inválidos
         $pagina = max(1, (int)$pagina);                       // La página mínima es 1
         $porPagina = max(1, min(100, (int)$porPagina));       // Entre 1 y 100 items por página
@@ -115,22 +115,20 @@ class PacienteService
      */
     public function crear(array $data): array
     {
-        // Validar nombre obligatorio + sanitizar (anti-XSS) y limitar
-        // strip_tags() elimina etiquetas HTML/JS (mitiga XSS); trim() limpia espacios extremos
-        $nombre = strip_tags(trim($data['nombre'] ?? ''));
-        // Valida que el nombre no esté vacío y no supere los 150 caracteres
-        if (empty($nombre) || strlen($nombre) > 150) {
-            // HTTP 422: el nombre es obligatorio y con longitud máxima de 150
-            throw new \InvalidArgumentException('El nombre del paciente es obligatorio (máx. 150 caracteres)', 422);
-        }
+        // Nombre: obligatorio, saneado (anti-XSS) y acotado a 150 caracteres.
+        // Reglas en core/Validador.php, que ya usan el resto de los servicios.
+        $nombre = Validador::textoObligatorio(
+            $data['nombre'] ?? '',
+            150,
+            'El nombre del paciente es obligatorio (máx. 150 caracteres)'
+        );
 
-        // Sanitiza el DNI (anti-XSS) y elimina espacios extremos; valor por defecto ''
-        $dni = strip_tags(trim($data['dni'] ?? ''));
-        // Valida la longitud máxima del DNI
-        if (strlen($dni) > 50) {
-            // HTTP 422: el DNI supera la longitud máxima permitida
-            throw new \InvalidArgumentException('El DNI no puede superar los 50 caracteres', 422);
-        }
+        // DNI: opcional, pero si viene se sanea y se acota a 50 caracteres.
+        $dni = Validador::longitudMaxima(
+            Validador::textoLimpio($data['dni'] ?? ''),
+            50,
+            'El DNI no puede superar los 50 caracteres'
+        );
 
         // Validar DNI único (si se proporciona)
         // Solo se valida la unicidad si el DNI viene completo
@@ -177,28 +175,28 @@ class PacienteService
         // Array donde se acumularán los campos válidos a actualizar
         $limpios = [];
 
-        // Si viene el nombre, se valida y sanitiza antes de actualizar
+        // Si viene el nombre, se valida y sanea antes de actualizar
         if (isset($data['nombre'])) {
-            // Saneamiento: elimina etiquetas HTML/JS y espacios extremos
-            $nombre = strip_tags(trim($data['nombre']));
-            // Valida que el nombre no quede vacío ni supere los 150 caracteres
-            if (empty($nombre) || strlen($nombre) > 150) {
-                // HTTP 422: el nombre no cumple los requisitos
-                throw new \InvalidArgumentException('El nombre no puede estar vacío (máx. 150 caracteres)', 422);
-            }
+            // Obligatorio y acotado a 150. El mensaje es distinto al de
+            // crear() a propósito: acá el usuario está editando un registro
+            // que ya existe, y el mensaje ayuda a entender qué pasó.
+            $nombre = Validador::textoObligatorio(
+                $data['nombre'],
+                150,
+                'El nombre no puede estar vacío (máx. 150 caracteres)'
+            );
             // Agrega el nombre validado al conjunto de campos a actualizar
             $limpios['nombre'] = $nombre;
         }
 
-        // Si viene el DNI, se valida y sanitiza antes de actualizar
+        // Si viene el DNI, se valida y sanea antes de actualizar
         if (isset($data['dni'])) {
-            // Saneamiento: elimina etiquetas HTML/JS y espacios extremos
-            $dni = strip_tags(trim($data['dni']));
-            // Valida la longitud máxima del DNI
-            if (strlen($dni) > 50) {
-                // HTTP 422: el DNI supera la longitud máxima permitida
-                throw new \InvalidArgumentException('El DNI no puede superar los 50 caracteres', 422);
-            }
+            // Opcional: si no viene el campo, no se toca el DNI guardado.
+            $dni = Validador::longitudMaxima(
+                Validador::textoLimpio($data['dni']),
+                50,
+                'El DNI no puede superar los 50 caracteres'
+            );
             // Agrega el DNI validado al conjunto de campos a actualizar
             $limpios['dni'] = $dni;
         }
