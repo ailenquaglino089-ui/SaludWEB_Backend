@@ -369,12 +369,11 @@ class CitaService
             ];
         }
 
-        // Sanitiza los filtros de texto: quitar etiquetas HTML y espacios extremos
+        // Sanea los filtros de texto: quitar etiquetas HTML y espacios
+        // extremos, y acotar a 100 caracteres para no abusar del LIKE con
+        // textos enormes. Las dos reglas salen de Validador (Clean Code - DRY).
         if (!empty($filtros['busqueda'])) {
-            // strip_tags() elimina <script> y cualquier otra etiqueta (anti-XSS)
-            $filtros['busqueda'] = strip_tags(trim((string)$filtros['busqueda']));
-            // Se limita la longitud para no abuse de LIKE con textos enormes
-            $filtros['busqueda'] = mb_substr($filtros['busqueda'], 0, 100);
+            $filtros['busqueda'] = Validador::acortar($filtros['busqueda'], 100);
         }
 
         // Valida el estado contra la lista blanca de estados reales.
@@ -639,15 +638,12 @@ class CitaService
         // PASO 7: Guardado
         // --------------------------------------------------
 
-        // El motivo de la consulta se sanitiza (anti-XSS) y se limita a 255 caracteres
-        $motivo = isset($data['motivo'])
-            ? mb_substr(strip_tags(trim((string)$data['motivo'])), 0, 255)
-            : null;
+        // El motivo de la consulta se sanea (anti-XSS) y se acota a 255
+        // caracteres. Si no viene, queda en null.
+        $motivo = Validador::acortarOpcional($data['motivo'] ?? null, 255);
 
-        // Las notas internas también, con un límite de 500 caracteres
-        $notas = isset($data['notas'])
-            ? mb_substr(strip_tags(trim((string)$data['notas'])), 0, 500)
-            : null;
+        // Las notas internas también, con un límite de 500 caracteres.
+        $notas = Validador::acortarOpcional($data['notas'] ?? null, 500);
 
         // Se guarda un registro de quién pidió la cita. Sirve para medir el uso
         // real de la autogestión online frente a la reserva por teléfono.

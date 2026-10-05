@@ -18,6 +18,12 @@
 
 class RateLimiter
 {
+    // A partir de cuántos intentos acumulados se avisa por log. Un login
+    // fallido aislado es DEBUG; lo que indica un ataque (o un límite mal
+    // configurado) es la repetición. Con este número, el log dice "van 5"
+    // una sola vez y no cinco veces.
+    private const AVISO_CADA_INTENTOS = 5;
+
     // Directorio donde se guardan los archivos JSON con los contadores por clave/IP
     private string $dir;
 
@@ -53,7 +59,15 @@ class RateLimiter
         // ¿Está bloqueado activamente?
         // (?? 0): si no existe la clave 'bloqueado_hasta' asume 0 (nunca bloqueado)
         if (($datos['bloqueado_hasta'] ?? 0) > $ahora) {
-            // Aún está bloqueado: se deniega la acción
+            // Aún está bloqueado: se deniega la acción.
+            // WARN, no ERROR: el sistema está haciendo exactamente lo que
+            // debe. El registro sirve para ver ataques de fuerza bruta en
+            // curso (muchos WARN de la misma clave) y para detectar una
+            // clave que se bloquea de forma legítima y que el usuario
+            // reporta como "no me deja entrar".
+            Logger::warn('petición bloqueada por rate limit (bloqueo activo)', $this->contexto($clave, $maxIntentos, $ventanaSegs));
+
+            // Se deniega la acción
             return false;
         }
 
@@ -76,7 +90,12 @@ class RateLimiter
             $datos['bloqueado_hasta'] = $ahora + $ventanaSegs;
             // Persiste el bloqueo en el archivo de la clave
             $this->guardar($clave, $datos);
-            // Se superó el máximo: se deniega la acción
+
+            // Se superó el máximo: se deniega la acción y se deja el
+            // registro de que el bloqueo se acaba de disparar, que es el
+            // dato útil para ver si el límite elegido es razonable.
+            Logger::warn('petición bloqueada por rate limit (máximo alcanzado)', $this->contexto($clave, $maxIntentos, $ventanaSegs));
+
             return false;
         }
 
@@ -95,6 +114,16 @@ class RateLimiter
         $datos['intentos'][] = time();
         // Guarda el estado actualizado en el archivo
         $this->guardar($clave, $datos);
+
+        // Solo se registra cuando se alcanza el límite, no en cada intento:
+        // un login fallido aislado es DEBUG, no WARN. Este es el criterio
+        // para que el log sea útil: ruido de menos, no de más.
+        if (count($datos['intentos']) >= self::AVISO_CADA_INTENTOS) {
+            Logger::warn('intentos fallidos acumulados', [
+                'clave'   => $this->huella($clave),
+                'intentos' => count($datos['intentos']),
+            ]);
+        }
     }
 
     /**
@@ -117,6 +146,46 @@ class RateLimiter
     private function ruta(string $clave): string
     {
         return $this->dir . '/' . hash('sha256', $clave) . '.json';
+    }
+
+    /**
+     * Huella corta de la clave, para poder escribirla en el log.
+     *
+     * La clave real suele ser algo como "login:192.168.1.10": contiene la IP
+     * del cliente, que es dato personal. Lo que hace falta en el log es poder
+     * agrupar ("todos estos bloqueos son de la misma clave"), y para eso
+     * alcanza con una huella. Se cortan los primeros 12 caracteres del hash
+     * porque el completo ocupa 64 y no aporta nada más.
+     *
+     * @param string $clave Clave original
+     * @return string Huella corta, por ejemplo "a1b2c3d4e5f6"
+     */
+    private function huella(string $clave): string
+    {
+        return substr(hash('sha256', $clave), 0, 12);
+    }
+
+    /**
+     * Contexto de un bloqueo, para el log.
+     *
+     * @param string $clave        Clave original (no se escribe: se escribe la huella)
+     * @param int    $maxIntentos  Límite configurado
+     * @param int    $ventanaSegs  Ventana configurada
+     * @return array
+     */
+    private function contexto(string $clave, int $maxIntentos, int $ventanaSegs): array
+    {
+        return [
+            // La huella, no la clave: permite correlacionar sin exponer la IP.
+            'clave'       => $this->huella($clave),
+            'max_intentos' => $maxIntentos,
+            'ventana_s'   => $ventanaSegs,
+            // El intento actual se cuenta como uno más: así el log dice
+            // "intento 6 de 5" y no obliga a abrir el archivo JSON para
+            // entenderlo.
+            'intento'     => count($this->leer($clave)['intentos']) + 1,
+            'peticion'    => Peticion::atributos(),
+        ];
     }
 
     /**

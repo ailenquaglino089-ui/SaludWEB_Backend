@@ -42,8 +42,8 @@ class PrescripcionService
      */
     public function obtenerPaginadas(int $pagina = 1, int $porPagina = 10, string $busqueda = '', string $estado = ''): array
     {
-        // Sanitiza y acota la búsqueda (anti-XSS + espacios; el LIKE se arma en el repo)
-        $busqueda = strip_tags(trim($busqueda));
+        // Sanea la búsqueda con la función compartida (Clean Code - DRY).
+        $busqueda = Validador::textoLimpio($busqueda);
         // El estado solo se filtra si es un texto no vacío (ya viene validado por whitelist en UI)
         $estado = trim($estado);
         // Normaliza los parámetros numéricos para evitar valores inválidos
@@ -148,16 +148,14 @@ class PrescripcionService
             throw new \InvalidArgumentException('Los medicamentos deben ser un array o JSON', 422);
         }
 
-        // La creación recorre un whitelist: solo se guarda lo permitido
-        // Lee las indicaciones solo si vienen (isset), las sanitiza (anti-XSS) y limpia espacios
-        $indicaciones = isset($data['indicaciones'])
-            ? strip_tags(trim((string) $data['indicaciones']))
-            : null;
-        // Valida la longitud máxima de las indicaciones (defensa contra abuso)
-        if ($indicaciones !== null && strlen($indicaciones) > 1000) {
-            // HTTP 422: las indicaciones superan la longitud máxima
-            throw new \InvalidArgumentException('Las indicaciones no pueden superar los 1000 caracteres', 422);
-        }
+        // La creación recorre una lista blanca: solo se guarda lo permitido.
+        // Las indicaciones son opcionales (pueden venir null), pero si vienen
+        // se sanean y se acotan a 1000 caracteres.
+        $indicaciones = Validador::textoOpcional(
+            $data['indicaciones'] ?? null,
+            1000,
+            'Las indicaciones no pueden superar los 1000 caracteres'
+        );
 
         // Crear la prescripción
         // Llama al repositorio con los campos validados y normalizados
@@ -205,15 +203,14 @@ class PrescripcionService
             }
         }
 
-        // Si vienen las indicaciones, se sanitizan (anti-XSS) y se limitan
+        // Si vienen las indicaciones, se sanean (anti-XSS) y se limitan
         if (isset($data['indicaciones'])) {
-            // Elimina etiquetas HTML/JS y espacios extremos, luego pasa a string
-            $indicaciones = strip_tags(trim((string) $data['indicaciones']));
-            // Valida la longitud máxima de las indicaciones
-            if (strlen($indicaciones) > 1000) {
-                // HTTP 422: las indicaciones superan la longitud máxima
-                throw new \InvalidArgumentException('Las indicaciones no pueden superar los 1000 caracteres', 422);
-            }
+            // Misma regla que en crear(): un solo lugar donde está definida.
+            $indicaciones = Validador::longitudMaxima(
+                Validador::textoLimpio($data['indicaciones']),
+                1000,
+                'Las indicaciones no pueden superar los 1000 caracteres'
+            );
             // Agrega las indicaciones validadas al conjunto de campos a actualizar
             $limpios['indicaciones'] = $indicaciones;
         }

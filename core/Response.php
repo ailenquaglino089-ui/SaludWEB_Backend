@@ -52,6 +52,27 @@ class Response
             'errores' => $errores,
         ];
 
+        // Registro del error en el log. Va antes de armar la respuesta porque
+        // es el paso que no falla nunca: si el log falla, el usuario igual
+        // tiene que recibir su respuesta.
+        //
+        // El nivel se deduce del código HTTP, no de una convención suelta:
+        //   5xx -> ERROR  (algo está roto: hay que enterarse)
+        //   4xx -> WARN   (la petición fue inválida: el sistema sigue bien)
+        // En producción el mensaje real del 5xx no se escribe en el log
+        // compartido, pero sí el código interno y la ruta.
+        $nivel = $status >= 500 ? Logger::ERROR : Logger::WARN;
+
+        // El detalle por campo se registra tal cual lo arma el llamador: son
+        // mensajes de validación redactados por el servicio, no datos del
+        // usuario. Por eso no necesitan el mismo tratamiento que los
+        // secretos, que sí se enmascaran dentro de Logger.
+        Logger::log($nivel, 'respuesta de error ' . $status . ': ' . $mensaje, [
+            'status'     => $status,
+            'code'       => $code,
+            'campos'     => array_keys(is_array($errores) ? $errores : []),
+            'peticion'   => Peticion::atributos(),        ]);
+
         // Seguridad: los errores 5xx jamás exponen detalles internos.
         // Se agrega un requestId para correlacionar con logs internos
         // sin filtrar stack traces, rutas ni credenciales (módulo
@@ -59,10 +80,20 @@ class Response
         if ($status >= 500) {
             // Oculta el detalle real del error al cliente (solo deja un mensaje genérico)
             $cuerpo['mensaje'] = 'Error interno del servidor';
-            // Genera un identificador aleatorio (bin2hex de 8 bytes) para correlacionar con logs
-            $cuerpo['requestId'] = bin2hex(random_bytes(8));
+            // El identificador de correlación de la petición. Es el MISMO que
+            // aparece en todos los logs de esta petición, así que el usuario
+            // puede reportar el fallo con ese id y el operador puede encontrar
+            // la causa exacta sin tener que adivinar por la hora.
+            // Antes se generaba un id aleatorio acá, que no aparecía en
+            // ningún log: era decorativo y no correlacionaba nada.
+            $cuerpo['requestId'] = CorrelationId::actual();
             // Código interno: usa el recibido o el genérico 'ERR_INTERNAL' (operador ??)
             $cuerpo['code'] = $code ?? 'ERR_INTERNAL';
+        } else {
+            // Los errores del cliente (4xx) también devuelven el
+            // identificador: sirve para reportar un 422 raro de un formulario
+            // y para que el frontend pueda mostrarlo o registrarlo.
+            $cuerpo['requestId'] = CorrelationId::actual();
         }
 
         // Envía el cuerpo ya armado con el código HTTP correspondiente y termina la ejecución

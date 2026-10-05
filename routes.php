@@ -892,8 +892,25 @@ $router->get('/api/eventos/estado', function () use ($realtimeService, $jwtServi
 // ============================================================
 // notFound() registra un manejador por defecto para cualquier ruta sin definir
 $router->notFound(function () {
+    // WARN: no es un ERROR (el servidor está bien) pero sí es una anomalía.
+    // La ruta pedida es el dato más útil que hay: un 404 casi siempre es un
+    // cliente que llama a un endpoint que ya no existe, que escribió mal la
+    // URL, o que está hablando contra una versión vieja de la API.
+    // Por eso se registra con WARN y no se ignora: si el log solo guardara
+    // 500, estos errores serían invisibles.
+    Logger::warn('ruta no encontrada (404)', Peticion::atributos());
+
     // Responde con el código HTTP 404 (Not Found) para que el cliente sepa que la ruta no existe
     http_response_code(404);
-    // Devuelve el error en formato JSON (JSON_UNESCAPED_UNICODE conserva caracteres acentuados)
-    echo json_encode(['error' => 'Ruta no encontrada'], JSON_UNESCAPED_UNICODE);
+
+    // Devuelve el error en formato JSON (JSON_UNESCAPED_UNICODE conserva caracteres acentuados),
+    // con el mismo envelope y el mismo identificador de correlación que el
+    // resto de los errores de la API. Un 404 con otra forma de respuesta que
+    // el resto obliga a cada cliente a manejar dos casos.
+    echo json_encode([
+        'ok'        => false,
+        'mensaje'   => 'Ruta no encontrada',
+        'errores'   => [],
+        'requestId' => CorrelationId::actual(),
+    ], JSON_UNESCAPED_UNICODE);
 });

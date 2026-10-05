@@ -55,15 +55,18 @@ class MedicoService
      */
     public function obtenerPaginado(int $pagina = 1, int $porPagina = 10, string $busqueda = '', string $especialidad = '', ?int $activo = null): array
     {
-        // Sanitiza y acota la búsqueda (anti-XSS + espacios; el LIKE se arma en el repo)
-        $busqueda = strip_tags(trim($busqueda));
+        // Sanea la búsqueda (anti-XSS + espacios; el LIKE se arma en el repo).
+        // Antes esta línea era strip_tags(trim($busqueda)) en cada servicio:
+        // ahora es una llamada a Validador, que es el único lugar donde está
+        // definida esa regla.
+        $busqueda = Validador::textoLimpio($busqueda);
 
-        // La especialidad también se sanitiza, pero NO se acota: es un valor
+        // La especialidad también se sanea, pero NO se acota: es un valor
         // exacto que se compara con "=", no un LIKE. No se valida contra el
         // catálogo de especialidades a propósito: si el nombre no existe
         // simplemente no trae resultados, que es el comportamiento esperado
         // de un filtro, y no un error de validación.
-        $especialidad = strip_tags(trim($especialidad));
+        $especialidad = Validador::textoLimpio($especialidad);
 
         // Normaliza los parámetros numéricos para evitar valores inválidos
         $pagina = max(1, (int)$pagina);                     // La página mínima es 1
@@ -127,34 +130,33 @@ class MedicoService
      */
     public function crear(array $data): array
     {
-        // trim() elimina espacios en blanco al inicio y final de un string
-        // ?? null: si no existe la clave 'nombre', usa null
-        // empty() verifica si está vacío (null, '', false, 0, [])
-        // Valida que el nombre sea obligatorio y no esté vacío (ni solo espacios)
-        if (empty(trim($data['nombre'] ?? ''))) {
-            // InvalidArgumentException = excepción por argumento inválido
-            // El código 422 indica "Unprocessable Entity" (validación fallida)
-            throw new \InvalidArgumentException('El nombre del médico es obligatorio', 422);
-        }
+        // Nombre: obligatorio, saneado y acotado a 150 caracteres.
+        //
+        // Un detalle que cambió con el refactor: antes se comprobaba que el
+        // nombre no estuviera vacío ANTES de sanearlo, así que un nombre
+        // formado solo por etiquetas HTML ("<b></b>") pasaba ese control y
+        // quedaba guardado como cadena vacía. Con Validador el saneamiento
+        // va primero y la validación después, que es el orden correcto.
+        $nombre = Validador::textoObligatorio(
+            $data['nombre'] ?? '',
+            150,
+            'El nombre del médico es obligatorio (máx. 150 caracteres)'
+        );
 
-        // Sanitiza el nombre: elimina etiquetas HTML/JS (anti-XSS) y espacios extremos
-        $nombre = strip_tags(trim($data['nombre']));
-        // Valida la longitud máxima del nombre
-        if (strlen($nombre) > 150) {
-            // HTTP 422: el nombre supera la longitud máxima permitida
-            throw new \InvalidArgumentException('El nombre no puede superar los 150 caracteres', 422);
-        }
-
-        // Sanitización de entradas (módulo "Seguridad Básica - Validación")
-        // Limpia la matrícula (anti-XSS + espacios) con valor por defecto ''
-        $matricula = strip_tags(trim($data['matricula'] ?? ''));
-        // Limpia la especialidad (anti-XSS + espacios) con valor por defecto ''
-        $especialidad = strip_tags(trim($data['especialidad'] ?? ''));
-        // Valida las longitudes máximas de ambos campos
-        if (strlen($matricula) > 50 || strlen($especialidad) > 100) {
-            // HTTP 422: algún campo supera la longitud máxima configurada
-            throw new \InvalidArgumentException('Algunos campos superan la longitud máxima', 422);
-        }
+        // Matrícula y especialidad: se sanean y se acotan con sus propios
+        // límites (50 y 100). Son dos llamadas y no una condición con "||"
+        // porque cada campo tiene su propio máximo: agruparlos obligaba a un
+        // único mensaje genérico para dos problemas distintos.
+        $matricula = Validador::longitudMaxima(
+            Validador::textoLimpio($data['matricula'] ?? ''),
+            50,
+            'La matrícula no puede superar los 50 caracteres'
+        );
+        $especialidad = Validador::longitudMaxima(
+            Validador::textoLimpio($data['especialidad'] ?? ''),
+            100,
+            'La especialidad no puede superar los 100 caracteres'
+        );
 
         // Inserta el médico llamando al repositorio
         // Llama al repositorio con los campos ya sanitizados y validados

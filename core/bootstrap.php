@@ -32,6 +32,35 @@ error_reporting(E_ALL);
 // Valida que en producción todas las variables obligatorias estén definidas
 Config::validar();
 
+// ============================================================
+// OBSERVABILIDAD: logs estructurados y trazabilidad
+// Módulo: "Calidad Profesional del Software - Logs y Trazabilidad"
+// ------------------------------------------------------------
+// Tres clases, tres responsabilidades separadas, y en este orden:
+//
+//   CorrelationId  qué identificador tiene esta petición
+//   Logger         cómo se escribe una línea de log (JSON + enmascarado)
+//   Peticion       cuándo se abre y se cierra la petición, y qué se registra
+//
+// El orden importa: la correlación se decide ANTES del primer log, porque un
+// log sin identificador es un log que no se puede correlacionar con nada.
+//
+// Todo esto se arma acá y no dentro de los controladores porque es
+// transversal: si cada controlador abriera su propia correlación, medio
+// sistema quedaría con logs y la otra mitad no.
+require_once __DIR__ . '/CorrelationId.php';
+require_once __DIR__ . '/Logger.php';
+require_once __DIR__ . '/Peticion.php';
+
+// Configura el logger antes de escribir el primer log. Lee LOG_LEVEL, LOG_DIR
+// y LOG_SERVICE del entorno, con valores por defecto razonables.
+Logger::configurar();
+
+// Arranca la observabilidad de la petición: identificador de correlación,
+// encabezado X-Correlation-Id para el cliente, handlers de error y excepción,
+// y el resumen final con método, ruta, estado y duración.
+Peticion::iniciar();
+
 // Inicia la sesión del usuario (para compatibilidad con clientes por cookies)
 session_start();
 
@@ -56,6 +85,12 @@ require_once __DIR__ . '/../db.php';
 
 // Carga el helper centralizado de respuestas JSON
 require_once __DIR__ . '/Response.php';
+
+// Carga el validador de entradas (Clean Code - DRY). Antes, las mismas reglas
+// estaban repetidas en cada servicio; acá viven en un solo lugar y todos los
+// servicios usan estas mismas funciones. Es una clase de núcleo, sin
+// dependencias, y por eso se carga antes que cualquier servicio.
+require_once __DIR__ . '/Validador.php';
 
 // Carga el helper de lectura del cuerpo JSON de las peticiones.
 // Se carga acá (y no dentro de cada controlador) para que el orden de
