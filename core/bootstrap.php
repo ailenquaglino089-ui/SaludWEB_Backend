@@ -12,6 +12,19 @@
 // core/bootstrap.php - Archivo de arranque (bootstrap) del sistema
 // ============================================================
 
+// ============================================================
+// CARGA DE VARIABLES DE ENTORNO
+// ------------------------------------------------------------
+// Esta es la PRIMERA cosa que hace el arranque, antes que Config.php.
+// El motivo es de orden, no de estética: Config::appEnv() y
+// Config::validar() leen con getenv() en las líneas de más abajo, y
+// db.php y el Logger leen después. Si .env se cargara más tarde,
+// todas esas lecturas verían los defaults del código y el archivo
+// completo se ignoraría en silencio.
+// ============================================================
+require_once __DIR__ . '/Env.php';
+Env::cargar();
+
 // Carga el autoload de Composer (librería firebase/php-jwt)
 require_once __DIR__ . '/../vendor/autoload.php';
 
@@ -239,7 +252,19 @@ $prescripcionRepo = new PrescripcionRepository($pdo);
 $prescripcionService = new PrescripcionService($prescripcionRepo);
 
 // Crea el servicio de JWT (inyectándole el secreto firmado)
-$jwtService = new JwtService(Secret::obtener());
+// Vigencia: JWT_TTL desde .env/entorno, en segundos.
+// Antes estaba escrita como variable en .env.example pero NADA la leía:
+// JwtService siempre usaba su 3600 de default, así que cambiarla no
+// tenía ningún efecto.
+//
+// El chequeo de > 0 no es cosmético: un TTL de 0 o negativo haría que
+// todos los tokens nacieran vencidos y el primer request posterior al
+// login devolviera 401, un error imposible de rastrear desde el mensaje.
+$jwtTtl = (int) (Config::get('JWT_TTL', '3600'));
+if ($jwtTtl <= 0) {
+    $jwtTtl = 3600;
+}
+$jwtService = new JwtService(Secret::obtener(), 'saludweb-api', $jwtTtl);
 
 // Crea el middleware de autenticación/autorización (lo usan las rutas protegidas)
 $authMiddleware = new AuthMiddleware($jwtService);

@@ -1,5 +1,13 @@
 {
     "require": {
         "firebase/php-jwt": "*"
+    },
+    "scripts": {
+        "dev": "php -S 127.0.0.1:8000 index.php",
+        "test": "php tests/run.php"
+    },
+    "scripts-descriptions": {
+        "dev": "Levanta la API con el servidor de desarrollo de PHP (sin Apache ni XAMPP).",
+        "test": "Corre la suite de pruebas unitarias."
     }
 }

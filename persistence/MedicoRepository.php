@@ -338,11 +338,13 @@ class MedicoRepository implements MedicoRepositoryInterface
      */
     public function desvincularPrescripciones(int $id): void
     {
-        // Primero asegura que la columna acepte NULL
-        try {
-            // exec() ejecuta una sentencia SQL de estructura (DDL) directamente: permite que id_medico sea NULL
-            $this->pdo->exec("ALTER TABLE prescripciones MODIFY id_medico INT NULL");
-        } catch (Exception $e) { /* ignorar */ }
+        // En el esquema MySQL acá había un ALTER TABLE ... MODIFY id_medico
+        // INT NULL, envuelto en un try/catch que ignoraba el error, solo
+        // para asegurar que la columna aceptara NULL.
+        // En SQLite eso ya no hace falta ni tendría sentido: el esquema
+        // declara id_medico como NULL desde su creación (ver db.php) y
+        // SQLite no soporta ALTER COLUMN. Se elimina el parche, no el
+        // comportamiento: la columna sigue aceptando NULL.
         // Desvincula las recetas
         // Consulta preparada: UPDATE ... SET id_medico = NULL pone null en las prescripciones que referencian al médico
         $stmt = $this->pdo->prepare("UPDATE prescripciones SET id_medico = NULL WHERE id_medico = ?");

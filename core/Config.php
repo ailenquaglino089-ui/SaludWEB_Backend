@@ -14,7 +14,7 @@ class Config
 {
     /**
      * Entorno actual de la aplicación.
-     * Default: development (comportamiento relajado para XAMPP local).
+     * Default: development (comportamiento relajado para desarrollo local).
      */
     public static function appEnv(): string
     {
