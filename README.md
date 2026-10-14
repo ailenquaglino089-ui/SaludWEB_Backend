@@ -28,7 +28,7 @@ la app móvil consumen esta misma API).
 ```
 routes.php                  →  todas las rutas de la API (leer primero)
 index.php                   →  punto de entrada (single entry point)
-.htaccess                   →  enrutamiento de Apache hacia index.php
+.htaccess                   →  reescritura de URLs hacia index.php (front controller)
 db.php                      →  conexión y creación automática de la BD
 core/                       →  Router, Response, JwtService, AuthMiddleware, Config, Secret
 controllers/ services/      →  lógica HTTP y de negocio (una por recurso)
@@ -42,6 +42,7 @@ probar_vinculacion.php      →  suite de pruebas de vinculación de fichas
 probar_turnera.php          →  suite de pruebas del módulo turnera
 probar_tiempo_real.php      →  verificación del módulo de tiempo real (18 pruebas + latencia)
 verificar_turnera.php       →  verificación rápida de salud de la turnera
+migrar_mysql_a_sqlite.php   →  importa datos de una base MySQL vieja a SQLite (opcional)
 AGENDA_DE_TRABAJO.md        →  planificación, hitos y pasos del proyecto
 PROJECT_BRIEF.md            →  brief del proyecto y entregables
 ```
@@ -72,7 +73,7 @@ que se muestran siguen viniendo por REST desde la fuente única de verdad.
 **Verificación:**
 
 ```
-http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
+http://127.0.0.1:8000/probar_tiempo_real.php
 ```
 
 Diagnostica tabla, índices, cursor, autorización de los cuatro canales, purga, y mide la
@@ -80,39 +81,47 @@ latencia real abriendo un canal HTTP y publicando un evento.
 
 ### Poner el tiempo real en marcha, paso a paso
 
-1. **Levantar MySQL y Apache** desde el Control Panel de XAMPP.
+1. **Levantar el backend**: con `composer run dev` (servidor nativo de PHP). No hace falta
+   ningún motor de base de datos: SQLite es un archivo y se crea solo.
 2. **Abrir el backend una vez** para que `db.php` cree la tabla `eventos_realtime`
    automáticamente (no hay que importar ningún SQL):
    ```
-   http://localhost/Workspace_SaludWEB/SaludWEB_Backend/api/health
+   http://127.0.0.1:8000/api/health
    ```
    Tiene que responder `200`.
 3. **Confirmar que el canal está montado**:
    ```
-   http://localhost/Workspace_SaludWEB/SaludWEB_Backend/api/eventos/estado
+   http://127.0.0.1:8000/api/eventos/estado
    ```
    Responde con los canales admitidos y los tipos de evento.
 4. **Abrir un canal a mano** (queda la pantalla esperando eventos):
    ```
-   http://localhost/Workspace_SaludWEB/SaludWEB_Backend/api/eventos?token=<JWT>&canal=tablero
+   http://127.0.0.1:8000/api/eventos?token=<JWT>&canal=tablero
    ```
    Aparece `retry: 3000` y un evento `conectado`. A partir de ahí, cada turno que se
    reserve aparece solo.
 5. **Probar todo el módulo**:
    ```
-   http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
+   http://127.0.0.1:8000/probar_tiempo_real.php
    ```
    18 verificaciones, incluyendo los cuatro rechazos por rol.
 
 > El paso 4 sirve para ver el stream crudo. Para verlo **aplicado a la interfaz** hay que
 > levantar el frontend: ver la guía de la Web.
 
+> **Nota sobre el servidor nativo:** `php -S` atiende de a una petición a la vez, así que
+> mientras un canal SSE queda abierto, otra petición no avanza. Para ver el tiempo real con
+> dos pestañas conviene usar un servidor con varios workers (PHP-FPM + nginx, u otro) o
+> correr dos instancias en puertos distintos. En desarrollo, `composer run dev` alcanza para
+> la API y las pruebas REST.
+
 ## Puesta en marcha
 
 ### Requisitos
 - PHP 8.x
 - Composer
-- MySQL corriendo (en XAMPP: iniciar el módulo `MySQL` desde el Control Panel)
+- *(Nada más: la base es SQLite, viene con PHP y se crea sola. No hay que instalar ni
+  iniciar ningún servidor de base de datos.)*
 
 ### 1. Clonar el repositorio
 ```bash
@@ -132,32 +141,85 @@ del proyecto y ejecutá:
 php composer.phar install
 ```
 
-### 3. Configurar entorno (opcional)
-Copia `.env.example` a `.env` y ajustá los valores (base de datos, `JWT_SECRET`,
-`CORS_ORIGINS`, `SSO_*`). En desarrollo, si no se configura nada, se usan los valores por
-defecto de `db.php` y `core/Secret.php`.
+### 3. Configurar el entorno (opcional)
+
+```bash
+copy .env.example .env
+```
+
+El archivo `.env` lo lee `core/Env.php`, que se ejecuta al principio de
+`core/bootstrap.php` (peticiones HTTP) y de `db.php` (scripts de la raíz).
+**Si no lo creás, no pasa nada:** cada variable tiene un valor por defecto
+escrito en el código. Crear el `.env` es opcional en desarrollo local y
+obligatorio cuando la configuración se sale de ese caso base:
+
+- querés mover el archivo de la base a otra ruta (`DB_DATABASE`);
+- querés fijar la vigencia de los tokens (`JWT_TTL`);
+- los scripts de prueba tienen que apuntar a otra URL (`API_BASE`);
+- configurás SSO (`SSO_*`).
+
+La lista completa está en [Variables de entorno](#variables-de-entorno).
 
 ### 4. Correr el backend
 
-**Opción A: servidor de desarrollo de PHP**
 ```bash
-php -S localhost:8000 index.php
+composer run dev
+# equivalente a:
+php -S 127.0.0.1:8000 index.php
 ```
 
-**Opción B: Apache/XAMPP**
-Copiá la carpeta dentro de `htdocs` (ej: `C:\xampp\htdocs\SaludWEB_Backend`) y abrí:
-```
-http://localhost/SaludWEB_Backend/api/health
-```
+El servidor nativo de PHP usa `index.php` como router (front controller), y las
+rutas y los códigos de estado son idénticos a los de un servidor web tradicional.
 
-> En el primer request, `db.php` crea automáticamente la base de datos, las tablas y los
-> datos de ejemplo (no hace falta importar ningún SQL).
+> En el primer request, `db.php` crea automáticamente el archivo de base de datos, las
+> tablas y los datos de ejemplo (no hace falta importar ningún SQL ni iniciar ningún
+> servicio). La base es un solo archivo: por defecto `storage/saludweb.sqlite`, y se
+> puede cambiar con `DB_DATABASE` en el `.env`.
+
+> **Para el tiempo real (SSE) en vivo:** `php -S` atiende de a una petición a la vez.
+> Alcanza para desarrollar la API y probar la SPA con el proxy de Vite, pero para
+> mantener un canal `/api/eventos` abierto mientras hacés otras peticiones conviene un
+> servidor con varios workers (por ejemplo PHP-FPM con nginx, o dos instancias en
+> puertos distintos).
 
 ### 5. Verificar
 ```bash
-curl http://localhost:8000/api/health
+curl http://127.0.0.1:8000/api/health
 ```
-Debe responder `200` con `{"data":{"status":"ok",...},"message":"API SaludWEB - Programación IV"}`.
+Debe responder `200` con `{"ok":true,"mensaje":"API SaludWEB - Programación IV","data":{"status":"ok",...}}`.
+
+## Variables de entorno
+
+Todas son opcionales en desarrollo: si no existen, manda el default. La jerarquía
+es **variable real del sistema > `.env` > valor por defecto del código**, así que
+en un servidor se pueden definir del panel o del servicio sin tocar el archivo.
+
+| Variable | Default | Qué controla |
+|---|---|---|
+| `APP_ENV` | `development` | `development` muestra errores en pantalla y permite secretos generados; `production` los oculta y exige todas las obligatorias. |
+| `API_BASE` | `http://127.0.0.1:8000` | URL de esta API para los scripts de prueba (`probar_roles_http.php`). |
+| `APP_TIMEZONE` | `America/Argentina/Buenos_Aires` | Zona horaria de PHP. Se fija en código para no depender del `php.ini` (muchas instalaciones traen `Europe/Berlin`). |
+| `DB_DATABASE` | `storage/saludweb.sqlite` | Ruta del archivo de la base (relativa a la raíz del backend). El archivo y su carpeta se crean solos en el primer request. |
+| `JWT_SECRET` | generado en `storage/secret.key` | Secreto de firma de los JWT. Cambiarlo invalida los tokens vigentes. |
+| `JWT_TTL` | `3600` | Vigencia del access token, en segundos. Valores `<= 0` se ignoran. |
+| `CORS_ORIGINS` | `http://localhost:5173,...` | Orígenes permitidos para el navegador, sin espacios. |
+| `LOG_LEVEL` | `DEBUG` en dev / `INFO` en prod | Nivel mínimo de log: `DEBUG`, `INFO`, `WARN`, `ERROR`. |
+| `LOG_DIR` | `storage/logs` | Carpeta de logs (un JSON por línea, un archivo por día). |
+| `LOG_SERVICE` | `saludweb-api` | Nombre del emisor en cada línea de log. |
+| `SSO_GOOGLE_CLIENT_ID` | *(vacío)* | Client ID de Google. Vacío = `501` en `/api/auth/sso`. |
+| `SSO_MICROSOFT_CLIENT_ID` | *(vacío)* | Application (client) ID de Microsoft Entra ID. |
+| `SSO_MICROSOFT_TENANT` | `common` | Tenant de Microsoft. |
+| `ROL_TEST_*` / `TEST_DNI` | valores de demostración | Credenciales que usa `probar_roles_http.php`. |
+
+Notas de formato del `.env`:
+
+- `CLAVE=valor`, una por línea; las líneas con `#` al principio son comentarios.
+- Los valores con espacios van entre comillas (`"` o `'`).
+- Un `#` pegado a la palabra no abre comentario (`CLAVE=abc#1` se toma entero).
+- Después de `CLAVE=` sin valor, la variable existe pero vacía, y los defaults con
+  `?:` del código la tratan como ausente.
+- `export CLAVE=valor` también se acepta, por si el mismo archivo se usa en una shell.
+
 
 ## Autenticación y SSO
 
@@ -188,9 +250,39 @@ Debe responder `200` con `{"data":{"status":"ok",...},"message":"API SaludWEB - 
 | Notificaciones | `POST /api/notificaciones/procesar` | Solo admin |
 | Usuarios | `GET /api/usuarios`, `GET /api/usuarios/roles`, `PATCH /api/usuarios/{id}/rol` | Solo admin |
 
+## Primer acceso (importante al clonar)
+
+`db.php` siembra automáticamente los **catálogos** (obras sociales, médicos, medicamentos,
+pacientes, especialidades y disponibilidades) la primera vez que se abre la API, pero
+**no crea ningún usuario**: un clon recién bajado arranca **sin cuentas**, así que nadie
+puede iniciar sesión de entrada. Hay que crear la primera.
+
+### Opción rápida: registrarse desde la interfaz
+
+La SPA web trae pantalla de **Registro** (`/register`): creá una cuenta con email y
+contraseña y ya podés entrar. La app móvil usa la misma API.
+
+### Opción por API
+
+`POST /api/auth/registro` es **público** y acepta el rol en el cuerpo:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/auth/registro \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@salud.com","password":"tu-clave","nombre":"Admin","tipo_usuario":"admin"}'
+```
+
+Después iniciá sesión con esas credenciales (`POST /api/auth/login`).
+
+> **Aviso de seguridad (solo demo):** el registro admite `tipo_usuario` con `admin` en la
+> lista blanca, así que cualquiera puede auto-crearse administrador. Es cómodo para una
+> demo, pero **no es apto para producción**: ahí habría que reservar el alta de admins a un
+> usuario ya autenticado (o cargarla por consola). Está anotado como deuda pendiente.
+
 ## Datos de demostración
 
-Las cuentas de prueba (creadas por la base al arrancar) ya tienen ficha vinculada:
+Si migraste la base MySQL vieja (ver `migrar_mysql_a_sqlite.php`), ya tenés estas cuentas
+con ficha vinculada:
 
 | Rol | Usuario | Contraseña |
 |---|---|---|
@@ -198,12 +290,16 @@ Las cuentas de prueba (creadas por la base al arrancar) ya tienen ficha vinculad
 | Paciente | `paciente@prueba.com` | `paciente123` |
 | Administradora | `admin@salud.com` | (contraseña personal, no está en el repo) |
 
+En un clon nuevo estas cuentas **no existen**: hay que crearlas con el registro (ver
+arriba).
+
 Si los datos de demo se desarmaron, regeneralos con:
 ```bash
 php sembrar_datos_demo.php
 ```
-El script es **idempotente**: crea o adopta fichas según matrícula/DNI, vincula las cuentas
-y no toca contraseñas.
+El script es **idempotente**: crea o adopta fichas según matrícula/DNI y vincula las
+cuentas existentes. **No crea usuarios ni toca contraseñas**, así que las cuentas deben
+existir de antes.
 
 ## Pruebas
 
@@ -214,7 +310,7 @@ los borran al terminar):
 php probar_roles.php          # roles y permisos (matriz completa)
 php probar_roles_http.php     # idem, contra la API por HTTP (requiere servidor)
 php probar_vinculacion.php    # vinculación de fichas (médicos y pacientes)
-php probar_turnera.php        # turnera completa (requiere API en 127.0.0.1:8080)
+php probar_turnera.php        # turnera completa (requiere API en 127.0.0.1:8000)
 php verificar_turnera.php     # chequeo rápido de salud de la turnera
 ```
 
@@ -222,7 +318,7 @@ La del módulo de tiempo real se abre en el navegador, porque la medición de la
 abrir una conexión HTTP contra el propio servidor:
 
 ```
-http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
+http://127.0.0.1:8000/probar_tiempo_real.php
 ```
 
 ## Documentación del proyecto
@@ -231,6 +327,9 @@ http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
   cómo funciona el canal, cómo se autoriza, las pruebas y las limitaciones conocidas.
 - `AGENDA_DE_TRABAJO.md` — todas las fases, hitos, decisiones y resultados (F1 a F5).
 - `PROJECT_BRIEF.md` — brief y entregables.
+- **`REVISAR_Y_PROBAR_EL_PROYECTO.md`** — la guia "de checklist a evidencia" aplicada al
+  proyecto: como se reviso y probo cada modulo, con la evidencia de las corridas (2026-10-14)
+  y los incidentes. Los cinco entregables viven en **`QA/`**.
 
 ## Calidad del software
 
@@ -252,12 +351,12 @@ estructurado con identificador de correlacion y suite de pruebas. El detalle com
 ### Correr las pruebas
 
 ```bash
-php tests/run.php              # toda la suite (49 pruebas)
+php tests/run.php              # toda la suite (50 pruebas)
 php tests/run.php Logger       # solo las clases que contengan "Logger"
 php tests/run.php --lista      # ver las clases disponibles
 ```
 
-La suite **no toca la base de datos**: corre sin MySQL y sin datos sembrados, en cualquier
+La suite **no toca la base de datos**: corre sin base y sin datos sembrados, en cualquier
 maquina con PHP 8. Devuelve codigo 0 si todo pasa y 1 si hay fallos, que es lo que necesita un
 pipeline.
 
