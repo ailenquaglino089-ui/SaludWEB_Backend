@@ -324,7 +324,7 @@ $ultimoId = $this->ultimoIdInicial($canal);
                 // el último id. Su único objetivo es mantener la conexión viva
                 // cuando no hay eventos. Sin esto, algunos proxies HTTP (Apache
                 // detrás de un balanceador, o ciertas configuraciones de nginx)
-                // cortan la conexión por inactividad, aunque en XAMPP suele
+                // cortan la conexión por inactividad, aunque con mod_php suele
                 // aguantar más tiempo.
                 $this->escribirCrudo(": ping " . time() . "\n\n");
                 $ultimoLatido = time();   // reinicia el cronómetro de inactividad
@@ -578,7 +578,7 @@ $ultimoId = $this->ultimoIdInicial($canal);
         // ya cerrada y se perderían. Es la trampa clásica al copiar código de
         // SSE que estaba pensado para un request que termina.
         //
-        // En este proyecto (XAMPP con mod_php) la función directamente no
+        // En este proyecto (mod_php) la función directamente no
         // existe, así que el problema no se veía. Con PHP-FPM el canal
         // emitía el primer evento y se cortaba, y el síntoma era desconcertante:
         // "funciona una vez y después nunca más".

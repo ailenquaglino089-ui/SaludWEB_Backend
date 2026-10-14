@@ -21,7 +21,7 @@
 
 Aplicar la guía "Primera Funcionalidad en Tiempo Real: Del Polling a la Inmediatez" al proyecto SaludWEB, reemplazando el polling adaptativo del **Dashboard** por notificaciones push mediante **Server-Sent Events (SSE)** nativos de PHP.
 
-**Principio fundamental:** *No se duplica el estado, solo se notifica que algo cambió*. Los datos siguen siendo solicitados por REST desde su fuente única de verdad (MySQL).
+**Principio fundamental:** *No se duplica el estado, solo se notifica que algo cambió*. Los datos siguen siendo solicitados por REST desde su fuente única de verdad (la base SQLite).
 
 ## 2. Decisión de Arquitectura
 
@@ -31,7 +31,7 @@ Se eligió **SSE nativo en PHP** por los siguientes motivos:
 |---|---|
 | **Estándar web** | EventSource es nativo en navegadores, sin librerías externas. |
 | **Unidireccional** | El servidor empuja eventos al cliente. Para este caso de uso (notificar cambios) es suficiente y más simple que WebSockets. |
-| **Sin infraestructura extra** | Funciona con Apache + PHP (XAMPP), sin necesidad de servidores de WebSocket, Redis pub/sub, Firebase o Supabase. |
+| **Sin infraestructura extra** | Funciona con PHP (servidor nativo), sin necesidad de servidores de WebSocket, Redis pub/sub, Firebase o Supabase. |
 | **Compatible con REST** | Se mantiene la arquitectura existente (PHP + PDO + Router + Response). |
 | **Menor complejidad** | No requiere handshake bidireccional, funciona detrás de proxies HTTP comunes. |
 | **Costo controlado** | Un proceso PHP por conexión abierta. Se limita con tiempo de vida (300s) y reconexión automática del navegador. |
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS eventos_realtime (
 
 | Decisión | Motivo |
 |---|---|
-| **Cursor por `id`, no por fecha** | El `id` es un autoincremental: nunca repite y nunca se entrega dos veces. Comparar fechas entre PHP y MySQL es una fuente clásica de errores cuando hay zonas horarias distintas. |
+| **Cursor por `id`, no por fecha** | El `id` es un autoincremental: nunca repite y nunca se entrega dos veces. Comparar fechas entre PHP y la base es una fuente clásica de errores cuando hay zonas horarias distintas. |
 | **Índice `(canal, id)`** | El listener consulta por canal y por id en cada vuelta. Sin ese índice el coste crecería con el volumen. |
 | **Retención de 30 minutos** | Es la ventana de reconexión razonable. Pasado ese tiempo, el cliente recarga por REST y no necesita el historial. |
 | **Purga cada 25 publicaciones** | Purgar en cada escritura sería una consulta extra por cada turno reservado, y esa tabla se escribe poco. |
@@ -130,11 +130,16 @@ Si un paciente pide `agenda:10` recibe **403**, y si inventa un canal recibe **4
 
 ### Verificación del backend
 
-`probar_tiempo_real.php` se abre en el navegador:
+`probar_tiempo_real.php` se abre en el navegador (backend levantado con `composer run dev`):
 
 ```
-http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
+http://127.0.0.1:8000/probar_tiempo_real.php
 ```
+
+> **Con `php -S` (mono-hilo)** las pruebas de las piezas corren, pero la medición de
+> latencia se cuelga: el script abre un canal HTTP contra el propio servidor mientras lo
+> está atendiendo, y el servidor nativo de PHP no puede atender dos cosas a la vez. Para
+> esa parte usá un servidor con varios workers.
 
 Cubre la tabla, los índices, el cursor, la integridad del payload, los cuatro casos de autorización y los cuatro rechazos, la purga, y mide la latencia real abriendo un canal HTTP mientras publica un evento.
 

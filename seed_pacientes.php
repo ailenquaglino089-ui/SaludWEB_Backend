@@ -11,11 +11,11 @@
 // páginas de N registros.
 // ============================================================
 
-// CAMBIA AQUI LOS VALORES SI TU CONEXION ES DISTINTA
-$host = getenv('DB_HOST') ?: 'localhost';   // Servidor de base de datos
-$dbName = getenv('DB_NAME') ?: 'pacientes'; // Nombre de la base de datos
-$user = getenv('DB_USER') ?: 'root';        // Usuario de MySQL
-$pass = getenv('DB_PASS') ?: '';            // Contraseña de MySQL (vacía por defecto)
+// La conexión y el esquema los deja listos db.php: abre la base SQLite,
+// aplica los PRAGMA y crea las tablas si faltan. Este script NO arma su
+// propia conexión a propósito: antes tenía un DSN de MySQL propio, así
+// que la configuración vivía en dos lugares y podían desincronizarse.
+require_once __DIR__ . '/db.php';
 
 // Cantidad de pacientes a crear: viene por parámetro ($argv[1])
 $cantidad = isset($argv[1]) ? (int)$argv[1] : 10;
@@ -24,18 +24,6 @@ if ($cantidad < 1) {
     // STDERR es la salida de error de la consola (no mezcla con el resultado normal)
     fwrite(STDERR, "La cantidad de pacientes debe ser mayor que 0\n");
     exit(1);  // Código de salida 1 = error
-}
-
-try {
-    // Conexión PDO a MySQL (mismos atributos que db.php)
-    $pdo = new PDO("mysql:host=$host;dbname=$dbName;charset=utf8mb4", $user, $pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-} catch (PDOException $e) {
-    // Si falla la conexión se avisa por consola y se corta la ejecución
-    fwrite(STDERR, "Error de conexión: " . $e->getMessage() . "\n");
-    exit(1);
 }
 
 // Obras sociales existentes (se eligen al azar para cada paciente)
@@ -98,7 +86,7 @@ while ($creados < $cantidad && $intentos < $maxIntentos) {
 }
 
 // Reporte final en consola
-echo "Se crearon $creados pacientes de prueba en la base '$dbName'.\n";
+echo "Se crearon $creados pacientes de prueba.\n";
 // Si el bucle terminó por el límite de intentos, se avisa (posible congestión de DNIs)
 if ($creados < $cantidad) {
     fwrite(STDERR, "No se pudo completar la cantidad pedida: muchos DNIs aleatorios repetidos.\n");

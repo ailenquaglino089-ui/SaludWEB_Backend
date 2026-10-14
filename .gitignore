@@ -6,6 +6,14 @@ composer.phar
 .env
 /storage/
 
+# Base de datos SQLite: la base es un archivo local, no se versiona.
+# (storage/ ya la cubre con la ruta por defecto; estos patrones
+# protegen el caso de apuntar DB_DATABASE a otra carpeta.)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+
 # Sistema
 *.log
 Thumbs.db

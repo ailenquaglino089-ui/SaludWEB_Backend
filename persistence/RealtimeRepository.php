@@ -122,18 +122,26 @@ class RealtimeRepository implements RealtimeRepositoryInterface
      */
     public function purgarAntiguos(int $minutos): int
     {
-        // Se calcula el corte con la función SQL NOW() menos un INTERVAL:
-        // la cuenta la hace el servidor de base de datos con su propio reloj,
-        // y no PHP. Con servidores en zonas horarias distintas, comparar
-        // fechas calculadas en dos lugares distintos es una fuente clásica
-        // de errores que aparecen de vez en cuando y son difíciles de
-        // encontrar. La fecha la pone siempre el mismo reloj: el del servidor.
+        // El corte lo calcula la base con su propio reloj, y no PHP: con la
+        // base y la aplicación en zonas horarias distintas, comparar fechas
+        // calculadas en dos lugares diferentes es una fuente clásica de
+        // errores que aparecen de vez en cuando y son difíciles de
+        // encontrar. La fecha la pone siempre el mismo reloj.
+        //
+        // datetime('now','localtime', ?) es el equivalente SQLite de
+        // NOW() - INTERVAL ? MINUTE: la función arma el instante actual en
+        // hora local y le aplica el modificador "-30 minutes" que se pasa
+        // como parámetro. El resultado queda en el formato
+        // 'AAAA-MM-DD HH:MM:SS', el mismo en el que se guarda creado_at, así
+        // que la comparación de texto es una comparación de fechas válida.
         $stmt = $this->pdo->prepare(
-            "DELETE FROM eventos_realtime WHERE creado_at < (NOW() - INTERVAL ? MINUTE)"
-            // INTERVAL con marcador es válido en MySQL: el ? se reemplaza por el
-            // número y la consulta queda "INTERVAL 30 MINUTE".
+            "DELETE FROM eventos_realtime
+             WHERE creado_at < datetime('now','localtime', ?)"
         );
-        $stmt->bindValue(1, max(1, $minutos), PDO::PARAM_INT);  // el corte, en minutos
+        // El modificador se construye con un entero ya normalizado: max(1, ?)
+        // evita un "-0 minutes" (que no borraría nada) y deja el valor fuera
+        // del SQL, así que no hay forma de inyectar nada por acá.
+        $stmt->bindValue(1, '-' . max(1, $minutos) . ' minutes');
         $stmt->execute();   // borra solo lo más viejo: los eventos de 30 min
 
         return $stmt->rowCount();   // cuántas filas se fueron, para diagnóstico

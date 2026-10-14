@@ -51,7 +51,7 @@ $raiz = __DIR__ . '/..';
 // ---------------------------------------------------------------
 // No se incluye bootstrap.php a propósito: ese archivo abre la conexión a la
 // base de datos y arma toda la aplicación. Las pruebas unitarias tienen que
-// poder correr sin MySQL, sin Apache y sin datos sembrados; si dependieran
+// poder correr sin base de datos, sin servidor web y sin datos sembrados; si dependieran
 // de eso, cada prueba sería en realidad una prueba de integración.
 require_once $raiz . '/core/Config.php';
 require_once $raiz . '/core/Logger.php';

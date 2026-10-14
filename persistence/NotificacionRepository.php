@@ -236,22 +236,38 @@ class NotificacionRepository implements NotificacionRepositoryInterface
      *
      * Por eso la comprobación tiene que estar en la base, no en el código:
      * el índice único convierte la segunda insertación en un no-op. La
-     * clave es ON DUPLICATE KEY, que convierte el choque en un UPDATE que
-     * no cambia nada en lugar de propagar el error.
+     * clave es ON CONFLICT ... DO NOTHING, que ante el choque descarta
+     * la fila nueva en lugar de propagar el error.
+     *
+     * POR QUÉ CON RETURNING Y NO CON rowCount()
+     * -----------------------------------------
+     * Antes se usaba "ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)" y
+     * después se miraba rowCount(): 1 fila = se insertó, 0 = ya existía.
+     *
+     * Ese truco es de MySQL y no se puede traducir literal a SQLite, por
+     * una diferencia real entre los dos motores: en SQLite, un UPDATE que
+     * deja el valor igual TAMBIÉN cuenta como fila afectada. O sea que
+     * "DO UPDATE SET id = id" devolvería 1 en los dos casos y el código no
+     * podría distinguir "lo creé" de "ya estaba".
+     *
+     * Con RETURNING el motor dice directamente si insertó: si la fila
+     * entró, devuelve su id; si chocó y se descartó, no devuelve ninguna
+     * fila. Se resuelve en una sola consulta, sin ambigüedad y sin
+     * depender de cómo cada motor cuenta las filas.
      *
      * @param array $data Mismos campos que crear()
      * @return int|null Id del aviso creado, o null si ya existía
      */
     public function crearSiNoExiste(array $data): ?int
     {
-        // id = LAST_INSERT_ID(id) es la parte importante: si el registro ya
-        // existe, MySQL no inserta, pero LAST_INSERT_ID() queda apuntando al
-        // id que ya estaba, así el resultado sigue siendo interpretable.
         $stmt = $this->pdo->prepare(
             "INSERT INTO notificaciones
              (id_cita, id_usuario, tipo, canal, destino, estado, token_cancelacion, motivo_error)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)"
+             ON CONFLICT (id_cita, tipo, canal) DO NOTHING
+             RETURNING id"
+            // RETURNING id: el id de la fila recién insertada. Si hubo
+            // conflicto y la fila se descartó, la consulta no devuelve nada.
         );
         $stmt->execute([
             (int)$data['id_cita'],
@@ -264,13 +280,13 @@ class NotificacionRepository implements NotificacionRepositoryInterface
             $data['motivo_error'] ?? null,
         ]);
 
-        // 1 fila afectada = se insertó de verdad.
-        // 0 = ya existía y el UPDATE no cambió nada (el id sigue siendo el mismo).
-        if ($stmt->rowCount() === 1) {
-            return (int) $this->pdo->lastInsertId();
-        }
+        // fetchColumn() devuelve false cuando no hay filas, que es
+        // exactamente el caso "ya existía". Se distingue de null para no
+        // confundir "no se creó" con "se creó y su id es 0" (que no puede
+        // pasar: los id arrancan en 1).
+        $id = $stmt->fetchColumn();
 
-        return null;
+        return $id === false ? null : (int) $id;
     }
 
     /**
@@ -280,10 +296,15 @@ class NotificacionRepository implements NotificacionRepositoryInterface
      */
     public function marcarEnviada(int $id): bool
     {
-        // enviado_at = CURRENT_TIMESTAMP guarda el momento real del envío
+        // enviado_at guarda el momento real del envío.
+        // Se usa datetime('now','localtime') y no CURRENT_TIMESTAMP a
+        // propósito: en SQLite CURRENT_TIMESTAMP devuelve la hora en UTC,
+        // mientras que el resto de las fechas del sistema se guardan en
+        // hora local. Mezclar las dos daría avisos que "llegaron" con tres
+        // horas de diferencia respecto de la cita que los generó.
         $stmt = $this->pdo->prepare(
             "UPDATE notificaciones
-             SET estado = 'enviado', enviado_at = CURRENT_TIMESTAMP, motivo_error = NULL
+             SET estado = 'enviado', enviado_at = datetime('now','localtime'), motivo_error = NULL
              WHERE id = ?"
         );
         return $stmt->execute([$id]);

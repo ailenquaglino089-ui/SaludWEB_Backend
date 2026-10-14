@@ -55,7 +55,7 @@ administrar pacientes, médicos y prescripciones con control de acceso por roles
 
 ### Incluido
 
-- Backend API REST: PHP + MySQL + JWT (Patrones Repository, Service y Controller).
+- Backend API REST: PHP + SQLite + JWT (Patrones Repository, Service y Controller).
 - Frontend web SPA: React + Vite (axios, contexto de autenticación, RBAC en UI).
 - Aplicación mobile que consume la API.
 - Autenticación con roles y protección de rutas (pública / protegida / solo-admin / solo-médico).
@@ -84,11 +84,11 @@ administrar pacientes, médicos y prescripciones con control de acceso por roles
 
 | Capa | Tecnología |
 | --- | --- |
-| Backend (API REST) | PHP 8, MySQL, JWT (firebase/php-jwt), XAMPP |
+| Backend (API REST) | PHP 8, SQLite, JWT (firebase/php-jwt) |
 | Frontend Web | React 18, Vite, Axios, CSS propio |
 | Tiempo real | Server-Sent Events nativo del navegador (`EventSource`) sobre HTTP; sin librerías externas |
 | Mobile | Aplicación en `SaludWEB_Mobile` (consume la misma API) |
-| Persistencia | MySQL + SQL preparado (anti-inyección) |
+| Persistencia | SQLite + SQL preparado (anti-inyección) |
 | Control de versiones | Git / GitHub — rama principal protegida, trabajo en rama `dev` |
 
 **Patrones backend:** Repository Pattern, Service Layer, Controller, Middleware de

@@ -116,7 +116,7 @@ revelar si el email existe.
 
 #### `tests/` (nuevo)
 
-Arnés de pruebas propio, sin dependencias nuevas. Corre sin base de datos, sin Apache y sin
+Arnés de pruebas propio, sin dependencias nuevas. Corre sin base de datos, sin servidor web y sin
 datos sembrados.
 
 ```bash
@@ -213,11 +213,11 @@ Todo lo anterior está cubierto por pruebas que se pueden correr en cualquier m�
 
 | Suite | Comando | Cobertura |
 |---|---|---|
-| Backend | `php SaludWEB_Backend/tests/run.php` | 49 pruebas sobre 5 clases |
+| Backend | `php SaludWEB_Backend/tests/run.php` | 50 pruebas sobre 5 clases |
 | Web | `cd SaludWEB_Web && npm test` | 32 pruebas |
 | Mobile | `cd SaludWEB_Mobile && npm test` | 27 pruebas |
 
-Total: **108 pruebas**, todas en verde, sin base de datos y sin servidor.
+Total: **109 pruebas**, todas en verde, sin base de datos y sin servidor.
 
 Los casos de prueba siguen la misma estructura en los tres repositorios: camino feliz, bordes
 y fallas. Los bordes son los que importan: límites exactos, valores vacíos, archivos

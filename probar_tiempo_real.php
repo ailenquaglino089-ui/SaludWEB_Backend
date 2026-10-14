@@ -17,14 +17,19 @@
 //      tarda en llegar. Esa cifra es la latencia que ve el usuario.
 //
 // CÓMO SE EJECUTA
-//   - Endpoint web (recomendado, mide la latencia real con Apache de por medio):
-//       http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php
-//   - Por consola:
-//       C:\xampp\php\php.exe probar_tiempo_real.php
+//   - Endpoint web (recomendado, mide la latencia real con el servidor de por medio):
+//       http://127.0.0.1:8000/probar_tiempo_real.php
+//   - Por consola (omite la prueba de latencia, que necesita abrir una conexión):
+//       php probar_tiempo_real.php
 //
 // REQUISITOS
-//   - Apache y MySQL encendidos (XAMPP)
+//   - El backend levantado (composer run dev) y accesible
 //   - La tabla eventos_realtime creada (se crea sola al cargar db.php)
+//
+//   OJO con `php -S`: es mono-hilo y esta prueba abre un canal HTTP contra el
+//   propio servidor mientras lo está atendiendo, así que la medición de latencia
+//   necesita un servidor con varios workers. Las pruebas de las piezas corren
+//   igual.
 //
 // NOTA SOBRE EL TIEMPO DE EJECUCIÓN
 // ----------------------------------
@@ -125,7 +130,10 @@ seccion('1. La tabla de eventos');
 
 $existe = false;
 try {
-    $fila = $pdo->query("SHOW TABLES LIKE 'eventos_realtime'")->fetch();
+    // SHOW TABLES LIKE es de MySQL; en SQLite las tablas se consultan en
+    // sqlite_master. La consulta devuelve una fila si la tabla existe y
+    // ninguna si no, así que ($fila !== false) sigue siendo la comprobación.
+    $fila = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'eventos_realtime'")->fetch();
     $existe = ($fila !== false);
 } catch (Exception $e) {
     $existe = false;
@@ -138,10 +146,13 @@ prueba($existe, 'La tabla eventos_realtime existe');
 // No es un detalle menor: el listener consulta por (canal, id) una vez por
 // segundo por cada conexión abierta. Sin ese índice, cada vuelta sería un
 // recorrido completo de la tabla y el coste crecería con el volumen.
-$indices = $pdo->query('SHOW INDEX FROM eventos_realtime')->fetchAll();
+// PRAGMA index_list es el equivalente SQLite de SHOW INDEX FROM: devuelve
+// una fila por índice, y el nombre viene en la columna 'name' (en MySQL era
+// 'Key_name'). El resto del bloque no cambia.
+$indices = $pdo->query('PRAGMA index_list(eventos_realtime)')->fetchAll();
 $nombres = [];
 foreach ($indices as $indice) {
-    $nombres[$indice['Key_name']] = true;
+    $nombres[$indice['name']] = true;
 }
 
 $okIndice = isset($nombres['idx_eventos_canal_id']);
@@ -304,13 +315,18 @@ seccion('3. La tabla no crece para siempre');
 // lado.
 $stmtViejo = $pdo->prepare(
     "INSERT INTO eventos_realtime (canal, tipo, datos, creado_at) "
-    . "VALUES (?, 'viejo', '{}', NOW() - INTERVAL 3 HOUR)"
+    . "VALUES (?, 'viejo', '{}', datetime('now','localtime','-3 hours'))"
+    // datetime('now','localtime','-3 hours') es el equivalente SQLite de
+    // NOW() - INTERVAL 3 HOUR: mismo instante, calculado por la base.
 );
 $stmtViejo->execute([$canalPrueba]);
 
 $stmtReciente = $pdo->prepare(
     "INSERT INTO eventos_realtime (canal, tipo, datos, creado_at) "
-    . "VALUES (?, 'reciente', '{}', NOW())"
+    . "VALUES (?, 'reciente', '{}', datetime('now','localtime'))"
+    // datetime('now','localtime') es el equivalente de NOW(), y a propósito
+    // NO se usa CURRENT_TIMESTAMP: en SQLite esa forma devuelve UTC, que
+    // ensuciaría la comparación de fechas del resto del sistema.
 );
 $stmtReciente->execute([$canalPrueba]);
 

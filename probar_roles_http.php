@@ -8,7 +8,11 @@
 // Necesita credenciales de admin. Si no están en .env, avisa y sale.
 require __DIR__ . '/core/bootstrap.php';
 
-$base = 'http://localhost/Workspace_SaludWEB/SaludWEB_Backend';
+// bootstrap.php (línea de arriba) ya cargó el archivo .env, así que
+// API_BASE puede venir de ahí. El valor por defecto es el backend nativo
+// (composer run dev en http://127.0.0.1:8000); si lo corrés en otro host
+// o puerto, definí API_BASE en el .env.
+$base = rtrim(getenv('API_BASE') ?: 'http://127.0.0.1:8000', '/');
 
 $emailAdmin = getenv('ROL_TEST_ADMIN_EMAIL') ?: 'admin@prueba.com';
 $claveAdmin = getenv('ROL_TEST_ADMIN_PASS') ?: 'admin123';

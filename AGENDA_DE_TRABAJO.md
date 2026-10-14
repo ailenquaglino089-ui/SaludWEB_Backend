@@ -161,11 +161,11 @@ Guía del docente **"Primera Funcionalidad en Tiempo Real: Del Polling a la Inme
 ## 6. Herramientas de seguimiento
 
 - **Git/GitHub**: historial de commits en `dev`, PR hacia `main`, issues de verificación.
-- **Pruebas manuales**: con Postman/HTTP contra la API real (`http://localhost/Workspace_SaludWEB/SaludWEB_Backend/api`).
+- **Pruebas manuales**: con Postman/HTTP contra la API real (`http://127.0.0.1:8000/api`).
 - **Credenciales de prueba**: `medico@prueba.com/medico123`, `paciente@prueba.com/paciente123`. La administradora es `admin@salud.com` (contraseña personal, fuera del repo).
 - **Datos de demostración**: `php sembrar_datos_demo.php` deja los datos con nombres ficticios y una sola cuenta administradora (`admin@salud.com`, sin tocar). No modifica ninguna contraseña.
 - **Pruebas del módulo de roles**: `php probar_roles.php` (reglas de negocio) y `php probar_roles_http.php` (endpoints reales). Las dos crean cuentas descartables y las borran al terminar, así que no dependen de ninguna credencial fija ni dejan la base modificada.
-- **Pruebas del módulo de tiempo real**: abrir `http://localhost/Workspace_SaludWEB/SaludWEB_Backend/probar_tiempo_real.php` en el navegador. Se ejecuta por HTTP a propósito: la medición de latencia necesita abrir un canal SSE contra el propio servidor, cosa que no se puede medir desde la línea de comandos.
+- **Pruebas del módulo de tiempo real**: abrir `http://127.0.0.1:8000/probar_tiempo_real.php` en el navegador. Se ejecuta por HTTP a propósito: la medición de latencia necesita abrir un canal SSE contra el propio servidor, cosa que no se puede medir desde la línea de comandos.
 
 ---
 

@@ -27,10 +27,14 @@ $problemas = 0;
 $tablasTurnera = ['especialidades', 'disponibilidades', 'citas', 'notificaciones'];
 
 echo "=== Verificación de la turnera ===\n";
-echo "Base de datos: pacientes\n\n";
+echo "Motor: SQLite\n\n";
 
-// Se listan todas las tablas que existen
-$tablas = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+// Se listan todas las tablas que existen.
+// SHOW TABLES es de MySQL; en SQLite el catálogo de tablas está en la
+// tabla interna sqlite_master, donde cada fila es un objeto del esquema
+// (tablas, índices, triggers, vistas). Filtrando type = 'table' queda
+// exactamente la misma lista que devolvía SHOW TABLES.
+$tablas = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
 
 foreach ($tablasTurnera as $tabla) {
     // Se comprueba una por una si la tabla está creada
@@ -69,13 +73,24 @@ $pacientes = (int) $pdo->query("SELECT COUNT(*) FROM pacientes WHERE activo = 1"
 echo "Pacientes activos: $pacientes\n";
 
 // Se muestran los índices únicos de citas, que son los que impiden que dos
-// pacientes reserven el mismo horario a la vez
+// pacientes reserven el mismo horario a la vez.
+// SHOW INDEX FROM citas es de MySQL; en SQLite el equivalente es el PRAGMA
+// index_list, que además de los índices propios lista el que crea el motor
+// solo para sostener la restricción UNIQUE (los "sqlite_autoindex_..."),
+// que es justamente el que interesa verificar acá.
 echo "\n--- Índices de la tabla citas ---\n";
-$indices = $pdo->query("SHOW INDEX FROM citas")->fetchAll(PDO::FETCH_ASSOC);
+$indices = $pdo->query("PRAGMA index_list(citas)")->fetchAll(PDO::FETCH_ASSOC);
 foreach ($indices as $indice) {
-    // Non_unique = 0 significa que el índice es único
-    $tipo = ((int) $indice['Non_unique'] === 0) ? 'ÚNICO' : 'normal';
-    echo "  {$indice['Key_name']} (columna: {$indice['Column_name']}) - $tipo\n";
+    // unique = 1 significa que el índice es único
+    $tipo = ((int) $indice['unique'] === 1) ? 'ÚNICO' : 'normal';
+    // PRAGMA index_info devuelve las columnas del índice en orden. El
+    // nombre del índice no puede ir como marcador (los PRAGMA no aceptan
+    // parámetros), así que se interpola; como el nombre viene del propio
+    // motor y solo lleva letras, números y guiones bajos, se escapan las
+    // comillas por las dudas y el valor queda seguro.
+    $nombreIndice = str_replace("'", "''", $indice['name']);
+    $columnas = $pdo->query("PRAGMA index_info('$nombreIndice')")->fetchAll(PDO::FETCH_COLUMN, 2);
+    echo "  {$indice['name']} (columnas: " . implode(', ', $columnas) . ") - $tipo\n";
 }
 
 // Se cierra con el resultado y el código de salida para scripting

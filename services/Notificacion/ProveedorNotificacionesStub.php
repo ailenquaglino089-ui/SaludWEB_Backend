@@ -8,7 +8,7 @@
 //
 // Qué hace y por qué existe
 // ------------------------
-// En desarrollo (XAMPP, sin SMTP configurado, sin cuenta de WhatsApp
+// En desarrollo (sin SMTP configurado, sin cuenta de WhatsApp
 // Business) no hay a dónde enviar un recordatorio. Este proveedor simula
 // el envío y devuelve éxito, de modo que todo el circuito de la turnera
 // se puede probar de punta a punta: se genera el recordatorio, se "envía",

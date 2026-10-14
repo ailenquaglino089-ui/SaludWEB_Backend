@@ -10,9 +10,9 @@
 //   la turnera anda después de un cambio, sin clickear 20 pantallas.
 //
 // CÓMO SE USA
-//   1. Con la API corriendo (por ejemplo: php -S 127.0.0.1:8080)
+//   1. Con la API corriendo (por ejemplo: composer run dev)
 //   2. php probar_turnera.php [url]
-//      Si no se pasa url, usa http://127.0.0.1:8080
+//      Si no se pasa url, usa http://127.0.0.1:8000
 //
 // QUÉ PRUEBA
 //   - Los catálogos públicos (especialidades, médicos, disponibilidad)
@@ -37,7 +37,7 @@
 // ============================================================
 
 // URL de la API: se puede pasar como argumento o se usa la de desarrollo
-$base = $argv[1] ?? 'http://127.0.0.1:8080';
+$base = $argv[1] ?? 'http://127.0.0.1:8000';
 
 // Acceso a la base, solo para crear y borrar la ficha temporal del paciente.
 // La API se prueba por HTTP; la base se toca únicamente para el fixture.
@@ -214,11 +214,20 @@ for ($i = 0; $i < 15 && $fecha === null; $i++) {
     $ts = strtotime("+$i days");
     $dia = (int)date('N', $ts);
     foreach ($bloques as $b) {
-        if ((int)$b['dia_semana'] === $dia && !empty($b['activo'])) {
-            $fecha = date('Y-m-d', $ts);
-            $diaSemana = $dia;
-            break;
+        if ((int)$b['dia_semana'] !== $dia || empty($b['activo'])) {
+            continue;
         }
+        // Si el día candidato es HOY, el bloque tiene que terminar después de
+        // la hora actual. Si ya terminó, no queda ningún turno futuro para
+        // reservar y la prueba fallaba con un falso negativo ("la agenda del
+        // día está llena") cuando se corría a la tarde. Con esto, en ese caso
+        // se salta a un día posterior que sí tenga turnos por delante.
+        if ($i === 0 && strtotime($b['hora_fin']) <= time()) {
+            continue;
+        }
+        $fecha = date('Y-m-d', $ts);
+        $diaSemana = $dia;
+        break;
     }
 }
 paso($fecha !== null, 'Se encuentra un próximo día con agenda');
