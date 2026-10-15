@@ -38,8 +38,8 @@ Fecha de la corrida: **2026-10-14**.
 | S3 | Contraseñas nunca en claro | hash bcrypt; login no revela si el email existe | `CALIDAD_PROFESIONAL_SOFTWARE.md` + `tests/run.php` | OK |
 | S4 | Secretos fuera de los logs | redacción recursiva de tokens/datos | `tests/run.php` (Logger) | OK |
 | S5 | `JWT_SECRET` robusto | mínimo 48 caracteres | `core/Secret.php` | OK |
-| S6 | Padrón de pacientes no público | Requiere autenticación | **Falla**: `GET /api/pacientes` responde 200 sin token → `INC-001` | **Incidente** |
-| S7 | Registro no permite auto-promoverse | `tipo_usuario` no debería aceptarse del cliente | **Falla**: acepta `admin` → `INC-004` | **Incidente aceptado** |
+| S6 | Padrón de pacientes no público | Requiere autenticación | `probar_seguridad.php` (401 sin token) → `INC-001` | OK |
+| S7 | Registro no permite auto-promoverse | `tipo_usuario=admin` no debe aceptarse | `probar_seguridad.php` (422 con `admin`) → `INC-004` | OK |
 
 ## 4. Manejo de errores y UX
 

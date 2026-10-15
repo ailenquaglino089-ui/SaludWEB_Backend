@@ -42,18 +42,18 @@ PHP nativo + SQLite.
 - 14 de 15 verificaciones ejecutadas terminaron en verde (ver `QA/04`).
 - La única no ejecutada (E2E de tiempo real con dos navegadores) depende de un servidor
   multihilo y de cuentas semilla con contraseña; queda documentada como limitación de entorno.
-- Se corrigieron 2 defectos (INC-002, INC-003) y se re-probaron.
-- Quedan **2 incidentes de seguridad abiertos** (INC-001, INC-004) que **no** bloquean la
-  entrega académica, pero **sí** deben resolverse antes de cualquier uso con datos reales.
+- Se corrigieron 4 defectos (INC-001, INC-002, INC-003 e INC-004) y se re-probaron.
+- Los dos incidentes de seguridad (INC-001 e INC-004) quedaron resueltos y cubiertos por la
+  regresión `php probar_seguridad.php`; ya no quedan incidentes abiertos.
 
 ## 4. Incidentes y su tratamiento
 
 | Id | Severidad | Estado | Tratamiento |
 |---|---|---|---|
-| INC-001 | Alta | Abierto | Recomendación escrita (exigir token en `/api/pacientes`). No aplicado para no romper el frontend sin verificar su consumo. |
+| INC-001 | Alta | Resuelto | Token obligatorio en `GET /api/pacientes` y `GET /api/pacientes/{id}` (401 sin token); verificado con `probar_seguridad.php`. |
 | INC-002 | Baja | Corregido | Fix en `probar_turnera.php` + regresión (21/21). |
 | INC-003 | Baja | Corregido | Conteo de pruebas actualizado (50 backend / 109 total). |
-| INC-004 | Alta | Abierto por decisión | Documentado como demo insegura; recomendación escrita. |
+| INC-004 | Alta | Resuelto | Registro público limitado a `paciente`/`medico` (422 con `admin`); verificado con `probar_seguridad.php`. |
 
 ## 5. Criterios de éxito del brief
 

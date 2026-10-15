@@ -56,9 +56,9 @@ Documenta, en este orden: `index.php`, `routes.php`, `db.php`, `.htaccess`, `com
   - L131: en blanco.
   - L132–L139: `GET /api/medicos/{id}` — detalle público; castea `(int) $id` y llama `show()`.
   - L140: en blanco.
-  - L141–L154: `GET /api/pacientes` — listado público; `try/catch` con 500 y JSON; `PacienteController->index()`.
+  - L141–L154: `GET /api/pacientes` — listado protegido (requiere JWT válido); `try/catch` con 500 y JSON; `PacienteController->index()`.
   - L155: en blanco.
-  - L156–L168: `GET /api/pacientes/{id}` — detalle público; `show((int) $id)`.
+  - L156–L168: `GET /api/pacientes/{id}` — detalle protegido (requiere JWT válido); `show((int) $id)`.
   - L169: en blanco.
   - L170–L172: separador AUTENTICACIÓN (pública: login y registro).
   - L173: en blanco.

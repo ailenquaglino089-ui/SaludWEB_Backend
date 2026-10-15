@@ -15,9 +15,9 @@ documentación).
 |---|---|
 | **Id** | INC-001 |
 | **Severidad** | Alta |
-| **Estado** | **Abierto** (documentado; no se corrigió en este ciclo) |
+| **Estado** | **Resuelto** (corregido y re-probado) |
 | **Módulo** | Seguridad / API de pacientes |
-| **Dónde** | `routes.php` líneas 141-168 |
+| **Dónde** | `routes.php` (rutas `GET /api/pacientes` y `GET /api/pacientes/{id}`) |
 
 **Descripción.** `GET /api/pacientes` y `GET /api/pacientes/{id}` están declaradas sin
 `$authMiddleware->verificarToken()`, así que devuelven datos personales sin autenticación.
@@ -50,6 +50,12 @@ el listado lo haga con sesión iniciada antes de aplicar el cambio.
 
 **Riesgo si no se corrige.** Divulgación de datos personales (nombre y DNI de toda la población
 de pacientes). En un sistema de salud real esto es una brecha de privacidad.
+
+**Corrección aplicada (2026-10-14).** Se agregó `$authMiddleware->verificarToken()` a ambas
+rutas: sin token responden `401`. No se exigió rol a propósito (el formulario de prescripciones
+usa el listado como selector para el médico y la pantalla de gestión, para el admin; ambos con
+sesión iniciada). La regresión `php probar_seguridad.php` comprueba `401` sin token y `200` con
+token válido.
 
 ---
 
@@ -139,9 +145,9 @@ php tests/run.php | Select-String "pruebas OK"
 |---|---|
 | **Id** | INC-004 |
 | **Severidad** | Alta |
-| **Estado** | **Abierto por decisión** (documentado como demo insegura) |
+| **Estado** | **Resuelto** (corregido y re-probado) |
 | **Módulo** | Autenticación / escalada de privilegios |
-| **Dónde** | `routes.php:176` (`POST /api/auth/registro`), `services/AuthService.php` (acepta `tipo_usuario`) |
+| **Dónde** | `routes.php` (`POST /api/auth/registro`) → `services/AuthService.php` (validación del `tipo_usuario`) |
 
 **Descripción.** `POST /api/auth/registro` es pública y toma `tipo_usuario` del cuerpo. Enviando
 `{"tipo_usuario":"admin"}` se crea una cuenta administradora sin ninguna autorización.
@@ -154,7 +160,7 @@ curl -s -X POST http://127.0.0.1:8000/api/auth/registro \
   -d '{"email":"x@x.com","password":"Clave123","nombre":"X","tipo_usuario":"admin"}'
 ```
 
-**Resultado esperado.** Un registro público solo debería crear cuentas con rol `paciente`.
+**Resultado esperado.** Un registro público nunca debería permitir elegir el rol `admin`.
 
 **Resultado obtenido.** `{"ok":true,...,"tipo_usuario":"admin",...}` — se creó un admin.
 
@@ -166,16 +172,22 @@ etapa académica: el proyecto se apoya en el registro para poblar la base de dem
 otros roles a una ruta solo-admin. Si se mantiene como demo, dejarlo señalizado (ya está en el
 README y aquí).
 
+**Corrección aplicada (2026-10-14).** En `AuthService::registro()` la lista blanca de roles quedó
+en `['paciente', 'medico']`: el alta pública **nunca** acepta `admin` (ni ningún otro valor) y
+responde `422`, dejando un `WARN` en el log con el intento. La creación de otros roles sigue por
+`PATCH /api/usuarios/{id}/rol` (solo admin). Lo comprueba `php probar_seguridad.php`.
+
 ---
 
 ## Resumen
 
 | Id | Severidad | Estado |
 |---|---|---|
-| INC-001 | Alta | Abierto |
+| INC-001 | Alta | Resuelto |
 | INC-002 | Baja | Corregido y re-probado |
 | INC-003 | Baja | Corregido |
-| INC-004 | Alta | Abierto por decisión |
+| INC-004 | Alta | Resuelto |
 
-Los dos incidentes abiertos (INC-001 y INC-004) son de seguridad y **requieren una decisión de
-alcance** antes de un despliegue real; su recomendación queda escrita arriba.
+Los cuatro incidentes quedaron resueltos. Los dos de seguridad (INC-001 y INC-004) se corrigieron
+el 2026-10-14 y quedan cubiertos por la regresión `php probar_seguridad.php` (401 sin token en el
+padrón de pacientes; 422 al intentar crear un admin desde el registro público).
