@@ -1,0 +1,314 @@
+# Guía de código — Backend · tests/
+
+> Recorrido línea por línea de la suite de pruebas propia.
+> Índice general en ../GUIA_DE_CODIGO.md
+
+## `tests/run.php` (164 líneas)
+
+- **Rol:** Ejecutor de la suite. Descubre las clases `*Test.php`, las corre y devuelve código de salida (0 = todo pasó, 1 = hubo fallos), que es lo que permite engancharlo a un pipeline sin escribir nada más.
+- **Recorrido línea por línea:**
+  - L1–L1: Apertura de PHP.
+  - L2–L35: Cabecera de comentario: qué es el archivo, cómo se usa (`php tests/run.php`, el filtro por nombre, `--lista`), por qué es un script y no un comando de framework (el código de salida), y qué cubre y qué no (lógica pura; no controladores ni repositorios).
+  - L36–L36: Línea en blanco.
+  - L37–L40: Comentario y `date_default_timezone_set('America/Argentina/Buenos_Aires')`: fija la zona horaria para que los tests de JWT no fallen por el entorno.
+  - L41–L41: Línea en blanco.
+  - L42–L45: Comentario y configuración de errores: `display_errors` en 1 y `error_reporting(E_ALL)` para ver los errores de PHP en la salida.
+  - L46–L46: Línea en blanco.
+  - L47–L47: Define `$raiz = __DIR__ . '/..'`, la raíz del backend.
+  - L48–L48: Línea en blanco.
+  - L49–L55: Encabezado de la sección 1 y comentario: no se incluye `bootstrap.php` a propósito para poder correr sin base de datos ni servidor.
+  - L56–L61: `require_once` de `core/Config.php`, `Logger.php`, `CorrelationId.php`, `Validador.php`, `RateLimiter.php` y `Peticion.php`.
+  - L62–L62: Línea en blanco.
+  - L63–L67: Comentario y carga de `vendor/autoload.php` y `core/JwtService.php` para las pruebas de JWT.
+  - L68–L68: Línea en blanco.
+  - L69–L70: Carga del arnés: `require_once __DIR__ . '/TestCase.php'`.
+  - L71–L71: Línea en blanco.
+  - L72–L78: Encabezado de la sección 2 y comentario del descubrimiento automático de pruebas.
+  - L79–L80: `glob(__DIR__ . '/*Test.php')` y `sort()`: lista y ordena los archivos de prueba.
+  - L81–L81: Línea en blanco.
+  - L82–L86: `$clases = []` y bucle que toma el nombre de clase de cada archivo con `basename($archivo, '.php')`.
+  - L87–L87: Línea en blanco.
+  - L88–L92: Encabezado de la sección 3: filtrado por argumento.
+  - L93–L99: `$filtro`, `$listar` y bucle por `array_slice($argv, 1)`: detecta `--lista` y toma el primer argumento que no empiece con `--` como filtro.
+  - L100–L100: Línea en blanco.
+  - L101–L106: Si hay filtro, `array_filter` con `stripos` sobre los nombres de clase (búsqueda sin distinguir mayúsculas).
+  - L107–L107: Línea en blanco.
+  - L108–L111: Si la lista de clases quedó vacía, imprime aviso y sale con código 1.
+  - L112–L112: Línea en blanco.
+  - L113–L117: Comentario y `require_once` de cada archivo de clase (se cargan recién acá para que `--lista` no levante código de más).
+  - L118–L118: Línea en blanco.
+  - L119–L125: Modo `--lista`: imprime las pruebas disponibles y sale con 0.
+  - L126–L126: Línea en blanco.
+  - L127–L132: Encabezado de la sección 4 y banner de inicio de la corrida.
+  - L133–L133: Línea en blanco.
+  - L134–L139: Comentario sobre el resumen (cuenta clases fallidas, no pruebas) y arranque de `$fallos = 0` y `$total = 0`.
+  - L140–L140: Línea en blanco.
+  - L141–L150: Bucle que instancia cada clase (`new $clase()`), incrementa `$total` y suma a `$fallos` si `correr()` no devuelve 0.
+  - L151–L151: Línea en blanco.
+  - L152–L154: Encabezado de la sección 5: resumen final y código de salida.
+  - L155–L155: Imprime el separador con `str_repeat('=', 60)`.
+  - L156–L160: Si no hubo fallos, imprime "TODO OK" y sale con 0.
+  - L161–L161: Línea en blanco.
+  - L162–L164: Imprime "HUBO FALLOS" y sale con 1 (el build falla).
+- **Se conecta con:** `core/Config.php`, `core/Logger.php`, `core/CorrelationId.php`, `core/Validador.php`, `core/RateLimiter.php`, `core/Peticion.php`, `core/JwtService.php`, `vendor/autoload.php`, `tests/TestCase.php` y todas las clases `*Test.php` del directorio.
+
+## `tests/TestCase.php` (339 líneas)
+
+- **Rol:** Arnés mínimo de pruebas unitarias: clase base abstracta con las aserciones y el registro de resultados. Explica por qué no usa PHPUnit y qué principios sí respeta (FIRST, AAA, auto-validante).
+- **Recorrido línea por línea:**
+  - L1–L1: Apertura de PHP.
+  - L2–L36: Cabecera de comentario: por qué existe este archivo y no PHPUnit (una sola dependencia, sin autoload), el tradeoff explícito y los principios que sí cumple.
+  - L37–L37: Línea en blanco.
+  - L38–L44: Docblock y declaración de `abstract class TestCase` con su llave de apertura.
+  - L45–L46: Docblock y propiedad `private int $ok = 0` (contador de pruebas que pasaron).
+  - L47–L47: Línea en blanco.
+  - L48–L49: Docblock y propiedad `private array $fallos = []` (descripciones de las pruebas fallidas).
+  - L50–L50: Línea en blanco.
+  - L51–L56: Docblock del contrato y `abstract public function pruebas(): array`, que cada subclase implementa.
+  - L57–L57: Línea en blanco.
+  - L58–L63: Docblock y firma de `public function correr(): int`.
+  - L64–L68: Toma el nombre de la clase (`static::class`) y lo imprime con un subrayado de guiones a juego con su longitud.
+  - L69–L69: Línea en blanco.
+  - L70–L73: Comentario del principio Independent y bucle `foreach ($this->pruebas() as $nombre => $funcion)`.
+  - L74–L77: Bloque `try`: ejecuta la función, incrementa `$ok` e imprime `[OK]`.
+  - L78–L84: `catch (\AssertionError $e)`: registra el motivo en `$fallos` e imprime `[FALLA]` con el mensaje.
+  - L85–L91: `catch (\Throwable $e)`: captura errores inesperados, los registra e imprime `[ERROR]` con la clase de la excepción.
+  - L92–L96: Cierra el bucle y devuelve `$this->resumen()`.
+  - L97–L97: Línea en blanco.
+  - L98–L117: Docblock y firma de `protected function ejecutar(callable $preparar, callable $actuar, callable $verificar): mixed` (estructura AAA explícita).
+  - L118–L125: Cuerpo de `ejecutar`: Arrange (`$contexto`), Act (`$resultado`) y Assert (`$verificar`), y devuelve el resultado de Act.
+  - L126–L126: Llave de cierre del método.
+  - L127–L127: Línea en blanco.
+  - L128–L132: Docblock y `public function cantidadOk(): int`, que devuelve el contador de pruebas OK.
+  - L133–L133: Línea en blanco.
+  - L134–L138: Docblock y `public function fallos(): array`, que devuelve la lista de fallos.
+  - L139–L139: Línea en blanco.
+  - L140–L146: Comentario que presenta el bloque de aserciones y explica que lanzan `AssertionError` y devuelven el valor.
+  - L147–L147: Línea en blanco.
+  - L148–L154: Docblock y firma de `afirmarQue(bool $condicion, string $mensaje)`.
+  - L155–L159: Cuerpo de `afirmarQue`: lanza `AssertionError` si la condición es falsa.
+  - L160–L160: Línea en blanco.
+  - L161–L167: Docblock y firma de `afirmarVerdadero(mixed $valor, string $mensaje = 'se esperaba true')`.
+  - L168–L170: Delega en `afirmarQue` con la comparación estricta `=== true`.
+  - L171–L171: Línea en blanco.
+  - L172–L178: Docblock y firma de `afirmarFalso(mixed $valor, string $mensaje = 'se esperaba false')`.
+  - L179–L181: Delega en `afirmarQue` con `=== false`.
+  - L182–L182: Línea en blanco.
+  - L183–L193: Docblock y firma de `afirmarIgual(mixed $esperado, mixed $real, string $mensaje = '')`; explica el uso de `===`.
+  - L194–L200: Cuerpo: arma el prefijo de contexto y llama a `afirmarQue` comparando con `===`.
+  - L201–L201: Línea en blanco.
+  - L202–L209: Docblock y firma de `afirmarContiene(string $texto, string $fragmento, string $mensaje = '')`.
+  - L210–L216: Cuerpo: verifica con `str_contains`.
+  - L217–L217: Línea en blanco.
+  - L218–L228: Docblock y firma de `afirmarNoContiene(...)`; es la aserción que protege los secretos en el log.
+  - L229–L235: Cuerpo: verifica con `!str_contains`.
+  - L236–L236: Línea en blanco.
+  - L237–L244: Docblock y firma de `afirmarCoincide(string $texto, string $patron, string $mensaje = '')`.
+  - L245–L251: Cuerpo: verifica con `(bool) preg_match($patron, $texto)`.
+  - L252–L252: Línea en blanco.
+  - L253–L266: Docblock y firma de `afirmarLanza(...): \Throwable`; el código de la excepción ES el código HTTP.
+  - L267–L277: `try` y `catch (\Throwable $e)`: primero verifica el tipo con `$e instanceof $clase`.
+  - L278–L278: Línea en blanco.
+  - L279–L282: Si se pidió `$codigo`, lo compara con `afirmarIgual` (el contrato HTTP).
+  - L283–L283: Línea en blanco.
+  - L284–L287: Si se pidió `$mensajeEsp`, verifica que el mensaje lo contenga.
+  - L288–L290: Devuelve la excepción y cierra el `catch`.
+  - L291–L291: Línea en blanco.
+  - L292–L293: Si no se lanzó nada, lanza `AssertionError`; cierra el método.
+  - L294–L294: Línea en blanco.
+  - L295–L300: Docblock y firma de `private function resumen(): int`.
+  - L301–L312: Cuerpo: calcula `$total`, imprime `ok/total` y, si hubo fallos, su cantidad; devuelve 0 o 1.
+  - L313–L313: Línea en blanco.
+  - L314–L320: Docblock y firma de `private function describir(mixed $valor): string`.
+  - L321–L338: Cuerpo de `describir`: string entre comillas, booleano como `true/false`, `null`, array con `json_encode`, objeto con `get_class` y, por defecto, `(string) $valor`.
+  - L339–L339: Llave de cierre de la clase.
+- **Se conecta con:** Es la base de todas las clases `*Test.php`; `tests/run.php` la incluye antes de instanciar las pruebas.
+
+## `tests/CorrelationIdTest.php` (200 líneas)
+
+- **Rol:** Pruebas de la correlación de peticiones: adopción de un id válido del cliente, rechazo de ids manipulados (la prueba de seguridad del módulo) y formato del id generado por el servidor.
+- **Recorrido línea por línea:**
+  - L1–L1: Apertura de PHP.
+  - L2–L19: Cabecera de comentario: qué se prueba y por qué, y los casos cubiertos (camino feliz, bordes y fallas).
+  - L20–L20: Línea en blanco.
+  - L21–L22: `require_once __DIR__ . '/TestCase.php'` y línea en blanco.
+  - L23–L24: Declaración de `class CorrelationIdTest extends TestCase` y llave de apertura.
+  - L25–L44: Docblock y `pruebas()`: el mapa de las 10 pruebas de la clase.
+  - L45–L45: Línea en blanco.
+  - L46–L63: `pruebaGeneraSiNoViene`: sin encabezado, se limpia el estado y se arranca la correlación; verifica el formato `cid_` + 16 hex.
+  - L64–L64: Línea en blanco.
+  - L65–L84: `pruebaAdoptaValido`: un id válido del cliente (`web-2026_10-05-a1b2`) se adopta tal cual.
+  - L85–L85: Línea en blanco.
+  - L86–L104: `pruebaRechazaSaltoDeLinea`: un id con `\n` se rechaza y se genera uno del servidor, sin salto de línea.
+  - L105–L105: Línea en blanco.
+  - L106–L111: `pruebaRechazaEspacios`: un espacio no pertenece al alfabeto permitido.
+  - L112–L112: Línea en blanco.
+  - L113–L118: `pruebaRechazaAngle`: `<` y `>` se rechazan porque sirven para inyectar en un visor HTML de logs.
+  - L119–L119: Línea en blanco.
+  - L120–L126: `pruebaRechazaLargo`: 65 caracteres se rechazan; 64 (justo en el límite) entran.
+  - L127–L127: Línea en blanco.
+  - L128–L137: `pruebaRechazaNoString`: `null`, número y array se rechazan (el array se controla antes de `preg_match`).
+  - L138–L138: Línea en blanco.
+  - L139–L157: `pruebaFormatoGenerado`: tres ids generados cumplen el formato y son distintos entre sí.
+  - L158–L158: Línea en blanco.
+  - L159–L178: `pruebaActualSinIniciar`: `actual()` devuelve un id aunque nadie haya iniciado, y la segunda llamada devuelve el mismo.
+  - L179–L179: Línea en blanco.
+  - L180–L199: `pruebaOlvidar`: tras `olvidar()`, el estado se reinicia y adopta el valor nuevo.
+  - L200–L200: Llave de cierre de la clase.
+- **Se conecta con:** `core/CorrelationId.php` (`iniciar`, `actual`, `generar`, `esValido`, `olvidar`) y `tests/TestCase.php`.
+
+## `tests/JwtServiceTest.php` (240 líneas)
+
+- **Rol:** Pruebas de emisión y verificación de JWT: camino feliz, privacidad de los claims y las fallas de seguridad (firma distinta, token manipulado, token vencido).
+- **Recorrido línea por línea:**
+  - L1–L1: Apertura de PHP.
+  - L2–L19: Cabecera de comentario: por qué la firma y la expiración son la frontera de seguridad, los casos y el alcance (verificación de firma, no romper el algoritmo).
+  - L20–L20: Línea en blanco.
+  - L21–L22: `require_once` del arnés y línea en blanco.
+  - L23–L24: Declaración de `class JwtServiceTest extends TestCase` y llave de apertura.
+  - L25–L30: Docblock y constante `private const SECRETO`, valor fijo y público a propósito (es un test).
+  - L31–L31: Línea en blanco.
+  - L32–L43: Docblock y `usuario()`: arma el usuario de ejemplo con `id`, `email`, `nombre` y `tipo_usuario`.
+  - L44–L44: Línea en blanco.
+  - L45–L62: Docblock y `pruebas()`: el mapa de las 8 pruebas de la clase.
+  - L63–L63: Línea en blanco.
+  - L64–L89: `pruebaEmitirYVerificar`: emite y verifica; comprueba `sub`, `rol`, `email`, `iss`, que `exp` coincide con `expires_at` y que vence en el futuro.
+  - L90–L90: Línea en blanco.
+  - L91–L112: `pruebaNoIncluyePassword`: aunque el usuario traiga `password`, el payload no lo lleva (ni `password_hash`).
+  - L113–L113: Línea en blanco.
+  - L114–L144: `pruebaSoloClaimsEsperados`: están los claims del contrato (`iss`, `iat`, `exp`, `sub`, `rol`) y no viajan columnas de más (`dni`, `activo`, `created_at`).
+  - L145–L145: Línea en blanco.
+  - L146–L165: `pruebaFirmaDistinta`: un token firmado con otro secreto se rechaza con `UnexpectedValueException`.
+  - L166–L166: Línea en blanco.
+  - L167–L190: `pruebaTokenManipulado`: alterar la firma invalida el token y su verificación falla.
+  - L191–L191: Línea en blanco.
+  - L192–L213: `pruebaTokenVencido`: un token con TTL negativo (ya vencido) se rechaza, sin depender del reloj.
+  - L214–L214: Línea en blanco.
+  - L215–L225: `pruebaTokenInvalido`: entradas que ni son un token (`''`, `'abc'`, `'a.b'`, `'a.b.c.d'`) lanzan excepción.
+  - L226–L226: Línea en blanco.
+  - L227–L239: `pruebaTtl`: el TTL configurado (900 s) se respeta en el claim `expires_at`.
+  - L240–L240: Llave de cierre de la clase.
+- **Se conecta con:** `core/JwtService.php` (`generar`, `verificar`) y `tests/TestCase.php`.
+
+## `tests/LoggerTest.php` (310 líneas)
+
+- **Rol:** Pruebas del log estructurado y del enmascarado de datos sensibles: formato JSON Lines, filtro por nivel, redacción de secretos, enmascarado de PII (recursivo), truncado de valores gigantes y escritura real en disco.
+- **Recorrido línea por línea:**
+  - L1–L1: Apertura de PHP.
+  - L2–L22: Cabecera de comentario: qué se prueba, los casos y el recordatorio de las fases AAA.
+  - L23–L23: Línea en blanco.
+  - L24–L25: `require_once` del arnés y línea en blanco.
+  - L26–L27: Declaración de `class LoggerTest extends TestCase` y llave de apertura.
+  - L28–L34: Docblock y propiedad `private string $dirTemporal`, la carpeta temporal de logs (se limpia al terminar).
+  - L35–L44: Docblock y `__construct()`: fija `$dirTemporal` con `sys_get_temp_dir()` y el pid.
+  - L45–L45: Línea en blanco.
+  - L46–L50: Docblock de `pruebas()`.
+  - L51–L64: `pruebas()`: el mapa de las 9 pruebas de la clase.
+  - L65–L65: Línea en blanco.
+  - L66–L101: `pruebaLineaConCampos`: la línea es JSON válido con `timestamp`, `level`, `message`, `service`, `correlationId` y `context`, con los valores pedidos y salto de línea al final.
+  - L102–L102: Línea en blanco.
+  - L103–L135: `pruebaFiltroDeNivel`: con el mínimo en WARN, `habilitado()` deja pasar WARN y ERROR pero no DEBUG ni INFO; guarda y restaura el nivel previo.
+  - L136–L136: Línea en blanco.
+  - L137–L149: `pruebaNivelDesconocido`: un nivel que no existe (`VERBOSE`) no se habilita.
+  - L150–L150: Línea en blanco.
+  - L151–L171: `pruebaPasswordRedactada`: el caso crítico; la contraseña no aparece y queda la marca `[oculto]`.
+  - L172–L172: Línea en blanco.
+  - L173–L188: `pruebaTokenRedactado`: un token de autenticación tampoco se filtra (ni sus partes).
+  - L189–L189: Línea en blanco.
+  - L190–L209: `pruebaPiiEnmascarada`: el email no aparece completo (conserva el primer carácter) y el DNI tampoco entero.
+  - L210–L210: Línea en blanco.
+  - L211–L239: `pruebaAnidado`: el enmascarado es recursivo; un secreto y un email anidados se ocultan, pero un dato no sensible (`id`) queda intacto.
+  - L240–L240: Línea en blanco.
+  - L241–L260: `pruebaTruncado`: un valor de 2000 caracteres se trunca (queda por debajo de 600) y avisa con la palabra "truncado".
+  - L261–L261: Línea en blanco.
+  - L262–L309: `pruebaEscrituraEnDisco`: integración mínima; apunta el logger a una carpeta temporal, escribe dos líneas, verifica que el archivo existe y se relee (JSON por línea) y limpia la carpeta y restaura la configuración.
+  - L310–L310: Llave de cierre de la clase.
+- **Se conecta con:** `core/Logger.php` (`linea`, `enmascarar`, `configurar`, `nivelMinimo`, `habilitado`, `info`, `warn`, `archivo`, `ultimasLineas`) y `tests/TestCase.php`.
+
+## `tests/RateLimiterTest.php` (220 líneas)
+
+- **Rol:** Pruebas del limitador de intentos: camino feliz, bloqueo al llegar al máximo, liberación con `limpiar()`, expiración de la ventana, archivos corruptos y separación entre claves.
+- **Recorrido línea por línea:**
+  - L1–L1: Apertura de PHP.
+  - L2–L20: Cabecera de comentario: por qué la seguridad no se prueba y no existe, el uso de una carpeta temporal propia y los casos.
+  - L21–L21: Línea en blanco.
+  - L22–L23: `require_once` del arnés y línea en blanco.
+  - L24–L25: Declaración de `class RateLimiterTest extends TestCase` y llave de apertura.
+  - L26–L27: Docblock y propiedad `private string $dirTemporal` (carpeta temporal de contadores).
+  - L28–L28: Línea en blanco.
+  - L29–L30: Docblock y propiedad `private RateLimiter $limiter` (instancia probada).
+  - L31–L31: Línea en blanco.
+  - L32–L40: Docblock y `__construct()`: cada prueba arranca con una carpeta nueva e instancia el `RateLimiter`.
+  - L41–L41: Línea en blanco.
+  - L42–L47: Docblock de `pruebas()`.
+  - L48–L57: `pruebas()`: el mapa de las 6 pruebas de la clase.
+  - L58–L58: Línea en blanco.
+  - L59–L79: `pruebaPermite`: por debajo del máximo (3 intentos), las tres consultas se permiten.
+  - L80–L80: Línea en blanco.
+  - L81–L101: `pruebaBloqueaEnMaximo`: con 3 fallos registrados, el cuarto intento se deniega.
+  - L102–L102: Línea en blanco.
+  - L103–L126: `pruebaLimpiar`: bloqueado antes de `limpiar()`, vuelve a permitirse después.
+  - L127–L127: Línea en blanco.
+  - L128–L150: `pruebaVentanaExpirada`: con ventana de 1 segundo y una espera de 2, la ventana expira y vuelve a permitir.
+  - L151–L151: Línea en blanco.
+  - L152–L180: `pruebaArchivoCorrupto`: un archivo JSON con basura se descarta y el sistema se recupera en vez de romperse.
+  - L181–L181: Línea en blanco.
+  - L182–L206: `pruebaClavesDistintas`: la clave saturada queda bloqueada y otra clave no se ve afectada.
+  - L207–L207: Línea en blanco.
+  - L208–L219: Docblock y `__destruct()`: limpieza final de la carpeta temporal al terminar las pruebas de la clase.
+  - L220–L220: Llave de cierre de la clase.
+- **Se conecta con:** `core/RateLimiter.php` (`permitir`, `registrar`, `limpiar`) y `tests/TestCase.php`.
+
+## `tests/ValidadorTest.php` (319 líneas)
+
+- **Rol:** Pruebas de la validación y el saneamiento de entradas. Es la razón de ser de `core/Validador.php`: reglas puras que se prueban en milisegundos, sin API ni base de datos.
+- **Recorrido línea por línea:**
+  - L1–L1: Apertura de PHP.
+  - L2–L23: Cabecera de comentario: el beneficio de la Separación de Responsabilidades, los casos (camino feliz, bordes y fallas) y el detalle del "valor en el límite exacto".
+  - L24–L24: Línea en blanco.
+  - L25–L26: `require_once` del arnés y línea en blanco.
+  - L27–L28: Declaración de `class ValidadorTest extends TestCase` y llave de apertura.
+  - L29–L35: Docblock y firma de `pruebas()`.
+  - L36–L55: Cuerpo de `pruebas()`: el mapa de las 17 pruebas de la clase.
+  - L56–L56: Línea en blanco.
+  - L57–L59: Separador de sección: Email.
+  - L60–L60: Línea en blanco.
+  - L61–L71: `pruebaEmailNormalizado`: el email vuelve normalizado (minúsculas y sin espacios).
+  - L72–L72: Línea en blanco.
+  - L73–L83: `pruebaEmailConEspacios`: los espacios y tabs/enter de los formularios se limpian.
+  - L84–L84: Línea en blanco.
+  - L85–L101: `pruebaEmailInvalido`: formato inválido lanza `InvalidArgumentException` con código 422 y mensaje "Email inválido".
+  - L102–L102: Línea en blanco.
+  - L103–L116: `pruebaEmailVacio`: cadena vacía y `null` se rechazan con 422.
+  - L117–L117: Línea en blanco.
+  - L118–L132: `pruebaEmailMensajePropio`: el login usa su propio mensaje y código (401) pasados por parámetro.
+  - L133–L133: Línea en blanco.
+  - L134–L136: Separador de sección: Contraseña.
+  - L137–L137: Línea en blanco.
+  - L138–L152: `pruebaPasswordEnLosLimites`: 6 y 72 caracteres (los dos extremos) se aceptan.
+  - L153–L153: Línea en blanco.
+  - L154–L162: `pruebaPasswordCorta`: 5 caracteres (uno menos que el mínimo) se rechazan con 422.
+  - L163–L163: Línea en blanco.
+  - L164–L172: `pruebaPasswordLarga`: 73 caracteres (uno más que el máximo de bcrypt) se rechazan con 422.
+  - L173–L173: Línea en blanco.
+  - L174–L176: Separador de sección: Textos.
+  - L177–L177: Línea en blanco.
+  - L178–L188: `pruebaTextoLimpio`: el saneamiento quita HTML y espacios (`<b>García</b> Pérez` -> `García Pérez`).
+  - L189–L189: Línea en blanco.
+  - L190–L204: `pruebaTextoLimpioNulo`: `textoLimpio(null)` devuelve cadena vacía, sin deprecación de `trim`.
+  - L205–L205: Línea en blanco.
+  - L206–L215: `pruebaTextoObligatorioVacio`: una cadena de solo espacios se rechaza con 422 y su mensaje.
+  - L216–L216: Línea en blanco.
+  - L217–L232: `pruebaTextoSoloHtml`: un texto con solo etiquetas (`<b></b>`) se rechaza; congela el orden correcto (sanear antes de validar vacío).
+  - L233–L233: Línea en blanco.
+  - L234–L258: `pruebaLimiteAlBorde`: 150 caracteres entran y 151 se rechazan con `InvalidArgumentException` y código 422.
+  - L259–L259: Línea en blanco.
+  - L260–L273: `pruebaOpcionalNulo`: un campo opcional ausente (`null`) devuelve `null`, no cadena vacía.
+  - L274–L274: Línea en blanco.
+  - L275–L285: `pruebaOpcionalViene`: si el opcional viene, se sanea y se acota como cualquier texto.
+  - L286–L286: Línea en blanco.
+  - L287–L306: `pruebaAcortar`: recorta a 255 caracteres contando con `mb_substr` (no bytes), sin cortar un acento a la mitad.
+  - L307–L307: Línea en blanco.
+  - L308–L318: `pruebaAcortarOpcionalNulo`: igual que `acortar`, pero respeta el "campo ausente" devolviendo `null`.
+  - L319–L319: Llave de cierre de la clase.
+- **Se conecta con:** `core/Validador.php` (`email`, `password`, `textoLimpio`, `textoObligatorio`, `textoOpcional`, `acortar`, `acortarOpcional`) y `tests/TestCase.php`.

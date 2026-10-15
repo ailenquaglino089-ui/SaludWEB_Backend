@@ -17,6 +17,18 @@
 
 Regla de esta guía: nada de números de línea ni de nombres inventados. Todo sale de leer el archivo.
 
+## Detalle línea por línea (por carpeta)
+
+El recorrido **línea por línea** de cada archivo está separado por carpeta en la carpeta [`GUIA_CODIGO/`](./GUIA_CODIGO/):
+
+- [`01_raiz_entrada.md`](./GUIA_CODIGO/01_raiz_entrada.md) — entrada y datos de la raíz: `index.php`, `routes.php`, `db.php`, `composer.json`, `.htaccess` y los scripts de datos (`migrar_mysql_a_sqlite.php`, `seed_pacientes.php`, `sembrar_datos_demo.php`).
+- [`02_raiz_pruebas.md`](./GUIA_CODIGO/02_raiz_pruebas.md) — scripts de prueba de la raíz (`probar_*.php`, `verificar_turnera.php`).
+- [`03_core.md`](./GUIA_CODIGO/03_core.md) — la infraestructura transversal (`core/`).
+- [`04_controllers.md`](./GUIA_CODIGO/04_controllers.md) — la capa HTTP (`controllers/`).
+- [`05_services.md`](./GUIA_CODIGO/05_services.md) — las reglas de negocio (`services/`).
+- [`06_persistence.md`](./GUIA_CODIGO/06_persistence.md) — el acceso a datos (`persistence/`).
+- [`07_tests.md`](./GUIA_CODIGO/07_tests.md) — la suite de pruebas (`tests/`).
+
 ## Arquitectura y flujo de una petición
 
 El backend es PHP puro, sin framework, organizado en capas. La idea es que cada capa haga una sola cosa y que la de arriba no sepa cómo está hecha la de abajo.

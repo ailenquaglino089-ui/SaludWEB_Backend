@@ -1,0 +1,618 @@
+# Guía de código — Backend · controllers/
+
+> Recorrido línea por línea de la capa HTTP.
+> Índice general en ../GUIA_DE_CODIGO.md
+
+Todos los controladores comparten el mismo patrón: NO contienen reglas de
+negocio ni SQL. Leen la petición (query string o cuerpo JSON), resuelven el
+contexto del usuario desde el token, delegan en el servicio y traducen la
+excepción a un código HTTP usando el helper `Response`. El conteo de líneas
+de cada archivo sale de leer el archivo completo, no de estimaciones.
+
+## `controllers/AuthController.php` (333 líneas)
+- **Rol:** atiende los endpoints de autenticación (registro, login clásico, SSO, cambio de contraseña, usuario actual, vinculación y logout). Aplica rate limiting por IP en login y SSO y delega toda la validación en `AuthService`.
+- **Recorrido línea por línea:**
+  - L1–L4: apertura del archivo y encabezado del controlador de autenticación.
+  - L5–L7: comentario de módulos aplicados y propósito de la clase.
+  - L8: declaración de la clase `AuthController`.
+  - L9: llave de apertura de la clase.
+  - L10–L11: propiedad `$service` (AuthService) inyectada por constructor.
+  - L12–L13: propiedad `$rateLimiter` (RateLimiter) para los intentos de login.
+  - L14: línea en blanco separadora.
+  - L15–L22: constructor que recibe por inyección el servicio y el rate limiter y los asigna.
+  - L23: línea en blanco.
+  - L24–L26: docblock del método `registro()` (POST /api/auth/registro).
+  - L27–L28: comentario y firma de `registro(): void`.
+  - L29: llave de apertura del método.
+  - L30–L34: `try` y lectura del cuerpo JSON con `CuerpoJson::leer()`.
+  - L35–L38: delega el registro en el servicio y responde 201 Created.
+  - L39–L48: `catch` de RuntimeException (400), InvalidArgumentException (422) y Exception (500).
+  - L49: cierre del método `registro()`.
+  - L50: línea en blanco.
+  - L51–L58: docblock del método `login()` con la política de rate limiting.
+  - L59–L60: comentario y firma de `login(): void`.
+  - L61–L65: obtiene la IP del cliente y arma la clave `login:<ip>` del rate limiter.
+  - L66: línea en blanco.
+  - L67–L74: `try` y verificación de intentos; si supera 5 en 900 s responde 429.
+  - L75: línea en blanco.
+  - L76–L83: lee el cuerpo JSON y valida que vengan email y password (422 si faltan).
+  - L84: línea en blanco.
+  - L85–L92: delega el login, limpia el contador de la IP y responde 200 OK.
+  - L93–L108: `catch` de RuntimeException (400), InvalidArgumentException (401, registra intento) y Exception (500).
+  - L109: cierre del método `login()`.
+  - L110: línea en blanco.
+  - L111–L118: docblock del método `sso()` (Google/Microsoft) y su seguridad.
+  - L119–L120: comentario y firma de `sso(): void`.
+  - L121–L125: obtiene la IP y arma la clave `sso:<ip>`.
+  - L126: línea en blanco.
+  - L127–L133: `try` y rate limiting (5 intentos / 15 min, 429 si excede).
+  - L134: línea en blanco.
+  - L135–L146: lee body, normaliza provider, toma id_token y valida ambos (422).
+  - L147: línea en blanco.
+  - L148–L154: delega `loginSso`, limpia el contador y responde 200 OK.
+  - L155–L171: `catch` de RuntimeException (400), InvalidArgumentException (401, registra intento), RuntimeException de claves del proveedor (503) y Exception (500).
+  - L172: cierre del método `sso()`.
+  - L173: línea en blanco.
+  - L174–L178: docblock de `cambiarContrasena()`.
+  - L179–L181: comentario, firma y llave del método.
+  - L182–L185: `try` y lectura del cuerpo JSON (passwordActual, passwordNueva).
+  - L186: línea en blanco.
+  - L187–L194: resuelve el id desde el token o la sesión y valida la autenticación (401).
+  - L195: línea en blanco.
+  - L196–L200: valida que ambas contraseñas vengan (422).
+  - L201: línea en blanco.
+  - L202–L207: delega `cambiarContrasena` en el servicio.
+  - L208: línea en blanco.
+  - L209–L210: responde 200 OK confirmando el cambio.
+  - L211–L220: `catch` de RuntimeException (400), InvalidArgumentException (401) y Exception (500).
+  - L221: cierre del método.
+  - L222: línea en blanco.
+  - L223–L226: docblock de `obtenerUsuarioActual()` (GET /api/auth/me).
+  - L227–L229: comentario, firma y llave.
+  - L230–L233: `try` y resolución del id desde JWT o sesión.
+  - L234–L238: valida la autenticación (401).
+  - L239: línea en blanco.
+  - L240–L243: pide el usuario al servicio y responde 200 OK.
+  - L244–L253: `catch` de RuntimeException (404), InvalidArgumentException (401) y Exception (500).
+  - L254: cierre del método.
+  - L255: línea en blanco.
+  - L256–L265: docblock de `vincular()` con la explicación de tipo/documento.
+  - L266–L267: firma y llave del método.
+  - L268–L273: `try`, resolución del id y validación de sesión (401).
+  - L274: línea en blanco.
+  - L275–L278: lee el cuerpo (tipo y documento) y los normaliza.
+  - L279: línea en blanco.
+  - L280–L282: comentario y delegación en `vincularEntidad`.
+  - L283: línea en blanco.
+  - L284–L287: responde 200 OK con el mensaje de vinculación.
+  - L288–L296: `catch` de InvalidArgumentException (422), RuntimeException (403) y Exception (500).
+  - L297: cierre del método.
+  - L298: línea en blanco.
+  - L299–L302: docblock y comentario del método `logout()`.
+  - L303–L304: firma y llave del método.
+  - L305–L308: destruye la sesión PHP y responde 200 OK.
+  - L309: cierre del método.
+  - L310: línea en blanco.
+  - L311–L317: docblock y comentario del helper `obtenerIdDesdeToken()`.
+  - L318: firma de `obtenerIdDesdeToken(): ?int`.
+  - L319–L323: toma el payload del middleware y lee el claim `sub`.
+  - L324: línea en blanco.
+  - L325–L329: valida que el id sea numérico y lo devuelve casteado.
+  - L330–L331: devuelve null si no hay token o el id no es numérico.
+  - L332: cierre del método.
+  - L333: cierre de la clase.
+- **Se conecta con:** `AuthService`, `RateLimiter`, `CuerpoJson`, `Response`, `AuthMiddleware` y el `$_SESSION` de PHP.
+
+## `controllers/CitaController.php` (423 líneas)
+- **Rol:** capa HTTP de la turnera. Expone disponibilidad pública, agenda y CRUD de citas con visibilidad según rol (paciente/médico/admin), imponiendo los filtros desde el token y no desde la URL.
+- **Recorrido línea por línea:**
+  - L1–L9: encabezado y explicación de que el controlador solo traduce HTTP ↔ servicio.
+  - L10–L15: pasos del controlador y declaración de la clase `CitaController`.
+  - L16–L18: llave y propiedad `$service` (CitaService).
+  - L19–L22: propiedad `$authService` usada para armar el contexto del usuario.
+  - L23–L29: docblock del constructor.
+  - L30–L35: constructor que asigna ambos servicios.
+  - L36: línea en blanco.
+  - L37–L49: docblock de `disponibilidad()` explicando que es pública y solo devuelve si/no.
+  - L50–L57: firma, lectura de `id_medico` y validación (422 si falta).
+  - L58–L62: lectura de `fecha` y validación (422 si falta).
+  - L63: línea en blanco.
+  - L64–L65: delega `obtenerDisponibilidad` y responde 200 OK.
+  - L66–L71: `catch` de InvalidArgumentException (422) y Exception (500).
+  - L72: cierre del método.
+  - L73: línea en blanco.
+  - L74–L82: docblock de `agenda()` (protegida, trae datos completos).
+  - L83–L97: firma, contexto, rol y bloqueo del paciente (403).
+  - L98: línea en blanco.
+  - L99–L102: valida `id_medico` (422).
+  - L103: línea en blanco.
+  - L104–L118: si es médico, compara contra su propio id del token y bloquea la agenda ajena (403).
+  - L119: línea en blanco.
+  - L120–L131: calcula el rango por defecto (semana actual, lunes a domingo).
+  - L132: línea en blanco.
+  - L133: delega `obtenerAgendaMedico` y responde 200 OK.
+  - L134–L138: `catch` de InvalidArgumentException (422) y Exception (500).
+  - L139: cierre del método.
+  - L140: línea en blanco.
+  - L141–L154: docblock de `index()` explicando la visibilidad por rol.
+  - L155–L167: firma, contexto y lectura de filtros de paginación y fechas.
+  - L168: línea en blanco.
+  - L169–L174: lee `id_medico`, `id_paciente` y el flag `mias`.
+  - L175: línea en blanco.
+  - L176–L185: comentario y armado del array `$filtros` base.
+  - L186: línea en blanco.
+  - L187–L206: si viene `?mias=1` o el rol es paciente, impone `id_paciente` desde el token (403 si no está vinculado).
+  - L207–L231: si el rol es médico, impone `id_medico` desde el token ignorando la URL (403 sin vínculo).
+  - L232–L241: si es admin, acepta `id_medico` e `id_paciente` libres.
+  - L242: línea en blanco.
+  - L243–L248: búsqueda del paciente limitada a su propio historial.
+  - L249: línea en blanco.
+  - L250–L253: agrega el filtro `solo_activas` si viene `?vigentes=1`.
+  - L254: línea en blanco.
+  - L255: delega `obtenerPaginadas` y responde 200 OK.
+  - L256–L260: `catch` de InvalidArgumentException (422) y Exception (500).
+  - L261: cierre del método.
+  - L262: línea en blanco.
+  - L263–L265: docblock de `show()` (GET /api/citas/{id}).
+  - L266–L273: firma, contexto y obtención de la cita (404 si no existe).
+  - L274: línea en blanco.
+  - L275–L285: control de acceso: paciente y médico solo ven lo suyo, con 404 para no filtrar existencia.
+  - L286: línea en blanco.
+  - L287: responde 200 OK con la cita.
+  - L288–L293: `catch` de RuntimeException (404) y Exception (500).
+  - L294: cierre del método.
+  - L295: línea en blanco.
+  - L296–L303: docblock de `store()` (reservar turno).
+  - L304–L313: firma, contexto y lectura del cuerpo JSON.
+  - L314: línea en blanco.
+  - L315–L319: si es paciente, impone su `id_paciente` desde el token.
+  - L320: línea en blanco.
+  - L321–L323: delega `crear` y responde 201 Created.
+  - L324–L332: `catch` de InvalidArgumentException (422), RuntimeException (409) y Exception (500).
+  - L333: cierre del método.
+  - L334: línea en blanco.
+  - L335–L340: docblock de `cambiarEstado()`.
+  - L341–L353: firma, contexto, lectura del body, validación del estado (422), cambio y respuesta.
+  - L354–L361: `catch` de RuntimeException (409) e InvalidArgumentException (422) y Exception (500).
+  - L362: cierre del método.
+  - L363: línea en blanco.
+  - L364–L370: docblock de `cancelar()` explicando por qué tiene endpoint propio.
+  - L371–L377: firma, contexto, cancelación y respuesta.
+  - L378–L382: `catch` de RuntimeException (409) y Exception (500).
+  - L383: cierre del método.
+  - L384: línea en blanco.
+  - L385–L387: docblock de `destroy()` (solo admin).
+  - L388–L394: firma, contexto, eliminación y respuesta.
+  - L395–L400: `catch` de RuntimeException (403) y Exception (500).
+  - L401: cierre del método.
+  - L402: línea en blanco.
+  - L403–L412: docblock de `contextoDesdeToken()` explicando `sub`/rol y los vínculos.
+  - L413–L421: firma, delegación en `contextoDePeticion()` y `catch` que reenvía el código (401).
+  - L422: cierre del método.
+  - L423: cierre de la clase.
+- **Se conecta con:** `CitaService`, `AuthService`, `CuerpoJson`, `Response`.
+
+## `controllers/DisponibilidadController.php` (149 líneas)
+- **Rol:** gestiona los bloques horarios que publica el profesional (días, horas y duración). Lectura pública y mutaciones protegidas, con reglas de negocio delegadas al servicio.
+- **Recorrido línea por línea:**
+  - L1–L13: encabezado y reglas de negocio que respeta el endpoint.
+  - L14–L17: declaración de la clase y propiedad `$service`.
+  - L18: línea en blanco.
+  - L19–L20: propiedad `$authService`.
+  - L21: línea en blanco.
+  - L22–L28: docblock del constructor.
+  - L29–L31: constructor que asigna ambos servicios.
+  - L32: línea en blanco.
+  - L33–L39: docblock de `index()` (lectura pública de la agenda).
+  - L40–L47: firma, `try`, validación de `id_medico` (422).
+  - L48–L51: comentario sobre el filtrado en frontend, delega y responde 200 OK.
+  - L52–L56: `catch` de InvalidArgumentException (422) y Exception (500).
+  - L57: cierre del método.
+  - L58: línea en blanco.
+  - L59–L62: docblock de `store()` (publicar bloque).
+  - L63–L70: firma, contexto, lectura del body, creación y respuesta 201 Created.
+  - L71–L77: `catch` de InvalidArgumentException (422), RuntimeException (409) y Exception (500).
+  - L78: cierre del método.
+  - L79: línea en blanco.
+  - L80–L86: docblock de `update()` explicando activo vs campos horarios.
+  - L87–L91: firma, contexto y lectura del cuerpo JSON.
+  - L92–L100: si viene `activo`, delega `cambiarActivo` y responde.
+  - L101–L106: comentario y edición vía `actualizar`, con respuesta 200 OK.
+  - L107–L114: `catch` de InvalidArgumentException (422), RuntimeException (409) y Exception (500).
+  - L115: cierre del método.
+  - L116: línea en blanco.
+  - L117–L122: docblock de `destroy()` (se implementa como desactivación).
+  - L123–L129: firma, contexto, eliminación lógica y respuesta.
+  - L130–L134: `catch` de RuntimeException (409) y Exception (500).
+  - L135: cierre del método.
+  - L136: línea en blanco.
+  - L137–L140: docblock del helper `contextoDesdeToken()`.
+  - L141–L148: firma, delegación en `contextoDePeticion()` y `catch` que reenvía el código (401).
+  - L149: cierre de la clase.
+- **Se conecta con:** `DisponibilidadService`, `AuthService`, `CuerpoJson`, `Response`.
+
+## `controllers/EspecialidadController.php` (171 líneas)
+- **Rol:** gestiona el catálogo de especialidades. Los GET son públicos (el paciente elige antes de ver profesionales) y las mutaciones son exclusivas del admin. La lógica del catálogo vive en `EspecialidadService`.
+- **Recorrido línea por línea:**
+  - L1–L21: encabezado, reglas de acceso y explicación de que no toca el repositorio.
+  - L22–L25: declaración de la clase y propiedad `$service`.
+  - L26: línea en blanco.
+  - L27–L28: propiedad `$authService`.
+  - L29: línea en blanco.
+  - L30–L34: docblock del constructor.
+  - L35–L39: constructor que asigna ambos servicios.
+  - L40: línea en blanco.
+  - L41–L44: docblock de `index()` (listado público).
+  - L45–L53: firma, `try`, parseo de `activas` y respuesta 200 OK, con `catch` de Exception (500).
+  - L54: línea en blanco.
+  - L55–L57: docblock de `show()`.
+  - L58–L67: firma, `try`, obtención por id y `catch` de RuntimeException (404) y Exception (500).
+  - L68: línea en blanco.
+  - L69–L72: docblock de `store()` (solo admin).
+  - L73–L95: firma, `verificarAdmin('crear')`, lectura del nombre, creación (201) y `catch` de InvalidArgumentException (422), RuntimeException (403) y Exception (500).
+  - L96: línea en blanco.
+  - L97–L99: docblock de `update()` (solo admin).
+  - L100–L120: firma, `verificarAdmin('modificar')`, lectura del nombre, actualización y `catch` de InvalidArgumentException (422), RuntimeException (404) y Exception (500).
+  - L121: línea en blanco.
+  - L122–L127: docblock de `destroy()` (no borra con profesionales asociados).
+  - L128–L141: firma, `verificarAdmin('eliminar')`, eliminación y `catch` de RuntimeException (404) y Exception (500).
+  - L142: línea en blanco.
+  - L143–L148: docblock de `verificarAdmin()`.
+  - L149–L158: comprueba el rol admin y lanza RuntimeException 403 si no lo es.
+  - L159: línea en blanco.
+  - L160–L162: docblock de `contextoDesdeToken()`.
+  - L163–L170: firma, delegación en `contextoDePeticion()` y `catch` que relanza con código 401.
+  - L171: cierre de la clase.
+- **Se conecta con:** `EspecialidadService`, `AuthService`, `CuerpoJson`, `Response`.
+
+## `controllers/EstadisticaController.php` (98 líneas)
+- **Rol:** expone métricas y KPIs del panel. Requiere autenticación y el alcance depende del rol: admin ve todo el consultorio, médico solo su agenda, el resto recibe 403.
+- **Recorrido línea por línea:**
+  - L1–L14: encabezado y explicación del panel de gestión.
+  - L15–L17: declaración de la clase y propiedad `$service`.
+  - L18: línea en blanco.
+  - L19–L20: propiedad `$authService`.
+  - L21: línea en blanco.
+  - L22–L26: docblock del constructor.
+  - L27–L31: constructor que asigna ambos servicios.
+  - L32: línea en blanco.
+  - L33–L49: docblock de `index()` explicando el alcance por rol.
+  - L50–L59: firma, contexto y restricción por rol (403 si no es admin/medico).
+  - L60: línea en blanco.
+  - L61–L72: resuelve el alcance; si es médico toma su `id_medico` del token (403 sin vínculo) y si es admin usa 0 (todo el consultorio).
+  - L73: línea en blanco.
+  - L74–L77: lee `desde`/`hasta` y delega `generarInforme` con respuesta 200 OK.
+  - L78–L84: `catch` de InvalidArgumentException (422), RuntimeException (401) y Exception (500).
+  - L85: cierre del método.
+  - L86: línea en blanco.
+  - L87–L89: docblock del helper `contextoDesdeToken()`.
+  - L90–L97: firma, delegación en `contextoDePeticion()` y `catch` que relanza con código 401.
+  - L98: cierre de la clase.
+- **Se conecta con:** `EstadisticaService`, `AuthService`, `Response`.
+
+## `controllers/MedicoController.php` (151 líneas)
+- **Rol:** CRUD de médicos. Interpreta la petición y delega en `MedicoService`; no contiene SQL y todas las respuestas pasan por `Response`.
+- **Recorrido línea por línea:**
+  - L1–L12: encabezado con el flujo Controlador → Servicio → Repository → MySQL → JSON.
+  - L13–L17: declaración de la clase y propiedad `$service`.
+  - L18: línea en blanco.
+  - L19–L24: constructor que recibe el servicio por inyección.
+  - L25: línea en blanco.
+  - L26–L39: docblock de `index()` con la diferencia entre búsqueda `q` y filtro exacto `especialidad`.
+  - L40–L47: firma y lectura de `pagina`, `por_pagina`, `q` y `especialidad`.
+  - L48–L56: parseo estricto de `activo` (solo '0'/'1', el resto queda en null).
+  - L57–L59: delega `obtenerPaginado` y responde 200 OK.
+  - L60: cierre del método.
+  - L61: línea en blanco.
+  - L62–L65: docblock y comentario de `show()`.
+  - L66–L75: firma, `try`, obtención por id y `catch` de RuntimeException (404).
+  - L76: cierre del método.
+  - L77: línea en blanco.
+  - L78–L81: docblock y comentario de `store()`.
+  - L82–L92: firma, `try`, lectura del body, creación y respuesta 201 Created.
+  - L93–L102: `catch` de RuntimeException (400), InvalidArgumentException (422) y Exception (500).
+  - L103: cierre del método.
+  - L104: línea en blanco.
+  - L105–L108: docblock y comentario de `update()`.
+  - L109–L118: firma, `try`, lectura del body, actualización y respuesta 200 OK.
+  - L119–L128: `catch` de RuntimeException (404), InvalidArgumentException (422) y Exception (500).
+  - L129: cierre del método.
+  - L130: línea en blanco.
+  - L131–L134: docblock y comentario de `destroy()`.
+  - L135–L142: firma, `try`, eliminación y respuesta 200 OK.
+  - L143–L149: `catch` de RuntimeException (404) y Exception (500).
+  - L150: cierre del método.
+  - L151: cierre de la clase.
+- **Se conecta con:** `MedicoService`, `CuerpoJson`, `Response`.
+
+## `controllers/NotificacionController.php` (231 líneas)
+- **Rol:** endpoints de avisos y recordatorios con tres niveles de acceso: públicos por token (link de email/SMS), protegidos (listar, reintentar, generar recordatorios) y el envío real (`procesar`) limitado a admin.
+- **Recorrido línea por línea:**
+  - L1–L21: encabezado con los tres niveles de acceso y por qué `procesarPendientes` no se expone por HTTP.
+  - L22–L25: declaración de la clase y propiedad `$service`.
+  - L26: línea en blanco.
+  - L27–L28: propiedad `$authService`.
+  - L29: línea en blanco.
+  - L30–L38: docblock del constructor.
+  - L39: línea en blanco.
+  - L40–L46: docblock de `index()` (avisos del usuario autenticado).
+  - L47–L56: firma, contexto y lectura de paginación y filtros.
+  - L57–L62: comentario y armado del array `$filtros`.
+  - L63–L67: si es admin y viene `id_usuario`, lo agrega al filtro.
+  - L68–L69: delega `obtenerPaginadas` y responde 200 OK.
+  - L70–L74: `catch` de InvalidArgumentException (422) y Exception (500).
+  - L75: cierre del método.
+  - L76: línea en blanco.
+  - L77–L87: docblock de `generarRecordatorios()` (idempotente, sin cronjob).
+  - L88–L98: firma, contexto y restricción a admin/medico (403).
+  - L99–L104: lee `dias` (por defecto 2), delega y responde 200 OK.
+  - L105–L112: `catch` de InvalidArgumentException (422), RuntimeException (403) y Exception (500).
+  - L113: cierre del método.
+  - L114: línea en blanco.
+  - L115–L120: docblock de `procesar()` (solo admin).
+  - L121–L128: firma, contexto y verificación de admin (403).
+  - L129–L133: lee `limite` (por defecto 50), delega `procesarPendientes` y responde.
+  - L134–L137: `catch` de Exception (500).
+  - L138: cierre del método.
+  - L139: línea en blanco.
+  - L140–L146: docblock de `reintentar()` (valida estado y pertenencia).
+  - L147–L153: firma, contexto, reintento y respuesta.
+  - L154–L162: `catch` de InvalidArgumentException (422), RuntimeException (409) y Exception (500).
+  - L163: cierre del método.
+  - L164: línea en blanco.
+  - L165–L171: docblock de `resolverPorToken()` (pública, sin datos clínicos).
+  - L172–L182: firma, `try`, resolución del token (404) y `catch` de Exception (500).
+  - L183: línea en blanco.
+  - L184–L190: docblock de `confirmarPorToken()` (pública).
+  - L191–L202: firma, `try`, confirmación (409 si no se puede) y `catch` de Exception (500).
+  - L203: línea en blanco.
+  - L204–L206: docblock de `cancelarPorToken()` (pública).
+  - L207–L217: firma, `try`, cancelación (409) y `catch` de Exception (500).
+  - L218: línea en blanco.
+  - L219–L222: docblock del helper `contextoDesdeToken()`.
+  - L223–L230: firma, delegación en `contextoDePeticion()` y `catch` que reenvía el código (401).
+  - L231: cierre de la clase.
+- **Se conecta con:** `NotificacionService`, `AuthService`, `CuerpoJson`, `Response`.
+
+## `controllers/PacienteController.php` (124 líneas)
+- **Rol:** CRUD de pacientes. Interpreta la petición y delega en `PacienteService`, con búsqueda paginada en el listado.
+- **Recorrido línea por línea:**
+  - L1–L6: encabezado y módulos aplicados.
+  - L7–L10: declaración de la clase y propiedad `$service`.
+  - L11: línea en blanco.
+  - L12–L17: constructor que recibe el servicio por inyección.
+  - L18: línea en blanco.
+  - L19–L22: docblock de `index()`.
+  - L23–L32: firma, lectura de `pagina`, `por_pagina` y `q`, y delegación con respuesta 200 OK.
+  - L33: línea en blanco.
+  - L34–L36: docblock y comentario de `show()`.
+  - L37–L48: firma, `try`, obtención por id y `catch` de RuntimeException (404).
+  - L49: línea en blanco.
+  - L50–L53: docblock de `store()`.
+  - L54–L65: firma, `try`, lectura del body, creación y respuesta 201 Created.
+  - L66–L75: `catch` de RuntimeException (400), InvalidArgumentException (422) y Exception (500).
+  - L76: cierre del método.
+  - L77: línea en blanco.
+  - L78–L80: docblock y comentario de `update()`.
+  - L81–L91: firma, `try`, lectura del body, actualización y respuesta 200 OK.
+  - L92–L101: `catch` de RuntimeException (404), InvalidArgumentException (422) y Exception (500).
+  - L102: cierre del método.
+  - L103: línea en blanco.
+  - L104–L106: docblock y comentario de `destroy()`.
+  - L107–L115: firma, `try`, eliminación y respuesta 200 OK.
+  - L116–L122: `catch` de RuntimeException (404) y Exception (500).
+  - L123: cierre del método.
+  - L124: cierre de la clase.
+- **Se conecta con:** `PacienteService`, `CuerpoJson`, `Response`.
+
+## `controllers/PrescripcionController.php` (169 líneas)
+- **Rol:** CRUD de prescripciones más listado por paciente y cambio de estado. Toda la validación y persistencia vive en `PrescripcionService`.
+- **Recorrido línea por línea:**
+  - L1–L6: encabezado y módulos aplicados.
+  - L7–L10: declaración de la clase y propiedad `$service`.
+  - L11: línea en blanco.
+  - L12–L17: constructor que recibe el servicio por inyección.
+  - L18: línea en blanco.
+  - L19–L23: docblock de `index()`.
+  - L24–L34: firma, lectura de paginación, `q` y `estado`, y delegación con respuesta 200 OK.
+  - L35: línea en blanco.
+  - L36–L39: docblock de `indexPorPaciente()`.
+  - L40–L45: firma y delegación `obtenerPorPaciente` con respuesta 200 OK.
+  - L46: línea en blanco.
+  - L47–L49: docblock y comentario de `show()`.
+  - L50–L61: firma, `try`, obtención por id y `catch` de RuntimeException (404).
+  - L62: línea en blanco.
+  - L63–L66: docblock de `store()`.
+  - L67–L78: firma, `try`, lectura del body, creación y respuesta 201 Created.
+  - L79–L88: `catch` de RuntimeException (400), InvalidArgumentException (422) y Exception (500).
+  - L89: cierre del método.
+  - L90: línea en blanco.
+  - L91–L93: docblock y comentario de `update()`.
+  - L94–L104: firma, `try`, lectura del body, actualización y respuesta 200 OK.
+  - L105–L114: `catch` de RuntimeException (404), InvalidArgumentException (422) y Exception (500).
+  - L115: cierre del método.
+  - L116: línea en blanco.
+  - L117–L119: docblock y comentario de `destroy()`.
+  - L120–L128: firma, `try`, eliminación y respuesta 200 OK.
+  - L129–L135: `catch` de RuntimeException (404) y Exception (500).
+  - L136: cierre del método.
+  - L137: línea en blanco.
+  - L138–L141: docblock de `cambiarEstado()`.
+  - L142–L157: firma, `try`, lectura del body, validación del estado (422), cambio y respuesta 200 OK.
+  - L158–L167: `catch` de RuntimeException (404), InvalidArgumentException (422) y Exception (500).
+  - L168: cierre del método.
+  - L169: cierre de la clase.
+- **Se conecta con:** `PrescripcionService`, `CuerpoJson`, `Response`.
+
+## `controllers/RealtimeController.php` (589 líneas)
+- **Rol:** capa HTTP del canal en vivo por Server-Sent Events (SSE). Es el único controlador que NO cierra con un JSON: mantiene la conexión abierta, escribe eventos y latidos, y expone un endpoint JSON aparte para diagnóstico.
+- **Recorrido línea por línea:**
+  - L1–L4: encabezado del controlador de tiempo real.
+  - L5–L36: explicación del protocolo SSE (id/event/data) y por qué hace falta el latido.
+  - L37–L53: por qué el bucle corre dentro de una petición HTTP y diferencia con WebSocket.
+  - L54–L67: límite de duración de la conexión y advertencia de no usar `Response` en el bucle.
+  - L68: línea en blanco.
+  - L69–L72: declaración de la clase y propiedad `$service`.
+  - L73–L77: propiedad `$jwt` para verificar el token del query string.
+  - L78–L81: propiedad `$authService` para resolver el contexto.
+  - L82–L85: constante `SEGUNDOS_MAXIMOS = 300`.
+  - L86: línea en blanco.
+  - L87–L88: constante `LATIDO_SEGUNDOS = 15`.
+  - L89: línea en blanco.
+  - L90–L97: constante `CONSULTA_SEGUNDOS = 1` y aclaración de que no es polling de datos.
+  - L98: línea en blanco.
+  - L99–L104: docblock y firma del constructor.
+  - L105–L109: asigna service, jwt y authService.
+  - L110: línea en blanco.
+  - L111–L113: comentario separador del endpoint GET /api/eventos.
+  - L114–L128: docblock de `canal()` con token, canal y cursor.
+  - L129–L136: firma, PASO 1: autenticación y `verificarTokenDeQuery()`.
+  - L137: línea en blanco.
+  - L138–L150: arma el contexto con `contextoDesdePayload()` y responde 401 si falla.
+  - L151: línea en blanco.
+  - L152–L157: PASO 2: comentario de autorización del canal.
+  - L158–L169: traduce el canal con `resolverCanal()` (422 o 403 según el error).
+  - L170: línea en blanco.
+  - L171–L177: PASO 3: cabecera `Cache-Control: no-store` para streaming.
+  - L178–L181: comentario sobre combinar no-cache y no-store.
+  - L182–L186: cabecera `X-Accel-Buffering: no` para proxies inversos.
+  - L187: línea en blanco.
+  - L188–L192: quita el Content-Type JSON y pone `text/event-stream`.
+  - L193–L195: comentario del MIME de eventos.
+  - L196: línea en blanco.
+  - L197–L198: cabecera `Connection: keep-alive`.
+  - L199: línea en blanco.
+  - L200–L207: PASO 4: comentario sobre sacar el búfer de salida.
+  - L208–L211: desactiva `output_buffering` con `@ini_set`.
+  - L212: línea en blanco.
+  - L213–L216: desactiva `zlib.output_compression`.
+  - L217: línea en blanco.
+  - L218–L223: cierra los búferes abiertos con `ob_end_flush()` en un while.
+  - L224: línea en blanco.
+  - L225–L227: activa `ob_implicit_flush(true)`.
+  - L228: línea en blanco.
+  - L229–L237: PASO 5: comentario sobre el candado de sesión.
+  - L238–L244: libera la sesión con `session_write_close()`.
+  - L245: línea en blanco.
+  - L246–L251: PASO 6: `@set_time_limit(0)` para la respuesta larga.
+  - L252: línea en blanco.
+  - L253–L258: `ignore_user_abort(false)` explícito con su justificación.
+  - L259: línea en blanco.
+  - L260–L267: PASO 7: escribe `retry: 3000` como mensaje de apertura.
+  - L268: línea en blanco.
+  - L269–L271: guarda `$inicio` (momento de apertura).
+  - L272: línea en blanco.
+  - L273–L276: calcula `$ultimoId` con `ultimoIdInicial()`.
+  - L277: línea en blanco.
+  - L278–L282: emite el evento `conectado` sin id.
+  - L283–L285: comentario explicando por qué la apertura no lleva id.
+  - L286: línea en blanco.
+  - L287: inicializa `$ultimoLatido`.
+  - L288: línea en blanco.
+  - L289–L296: PASO 8: comentario de los tres motivos de fin del bucle.
+  - L297–L300: `while (true)` y lectura de eventos con `leerEventos(..., 50)`.
+  - L301: línea en blanco.
+  - L302–L309: recorre los eventos y avanza el cursor antes de escribir.
+  - L310: línea en blanco.
+  - L311–L313: escribe cada evento con su id y datos.
+  - L314: línea en blanco.
+  - L315–L319: si hubo eventos reinicia el cronómetro del latido.
+  - L320–L331: si pasó el intervalo, escribe el latido (`: ping`) y reinicia el cronómetro.
+  - L332: línea en blanco.
+  - L333–L343: comentario de detección de desconexión con `connection_aborted()`.
+  - L344–L347: corta el bucle con `break` si el cliente se desconectó.
+  - L348: línea en blanco.
+  - L349–L352: cierre por duración contra `SEGUNDOS_MAXIMOS`.
+  - L353–L359: emite el evento `reconectar` y corta el bucle.
+  - L360: línea en blanco.
+  - L361–L364: `sleep(CONSULTA_SEGUNDOS)` entre vueltas.
+  - L365–L367: comentario sobre el retraso percibido.
+  - L368: cierre del bucle.
+  - L369: línea en blanco.
+  - L370–L375: cierre final que libera la sesión si sigue activa.
+  - L376: cierre del método `canal()`.
+  - L377: línea en blanco.
+  - L378–L389: docblock de `datosDe()` (desempaqueta la columna `datos`).
+  - L390–L403: firma, lectura y decodificación del JSON de la fila.
+  - L404: línea en blanco.
+  - L405–L407: devuelve un objeto mínimo con el tipo si el JSON vino mal.
+  - L408: cierre del método.
+  - L409: línea en blanco.
+  - L410–L412: comentario separador del endpoint GET /api/eventos/estado.
+  - L413–L427: docblock de `estado()` (diagnóstico en JSON).
+  - L428–L435: firma, `try`, `diagnostico()` y `catch` de Exception (500).
+  - L436: línea en blanco.
+  - L437–L439: comentario separador de los helpers privados.
+  - L440: línea en blanco.
+  - L441–L463: docblock de `verificarTokenDeQuery()` con el motivo del token en la URL.
+  - L464–L474: firma, lectura del token del query y 401 si viene vacío.
+  - L475: línea en blanco.
+  - L476–L487: verifica el token con `jwt->verificar()` y responde 401 si falla.
+  - L488: cierre del método.
+  - L489: línea en blanco.
+  - L490–L503: docblock de `ultimoIdInicial()` con los tres casos.
+  - L504–L509: caso 1: parámetro explícito `?ultimo=N`.
+  - L510: línea en blanco.
+  - L511–L518: caso 2: encabezado `Last-Event-ID` de la reconexión.
+  - L519: línea en blanco.
+  - L520–L522: caso 3: conexión nueva, arranca desde el último id del canal.
+  - L523: cierre del método.
+  - L524: línea en blanco.
+  - L525–L530: docblock de `escribirEvento()`.
+  - L531–L539: firma y escritura del `id:` solo si no es null.
+  - L540: línea en blanco.
+  - L541: escribe la línea `event:`.
+  - L542: línea en blanco.
+  - L543–L547: escribe el `data:` en una sola línea con `JSON_UNESCAPED_UNICODE`.
+  - L548: línea en blanco.
+  - L549: delega en `escribirCrudo()`.
+  - L550: cierre del método.
+  - L551: línea en blanco.
+  - L552–L556: docblock de `escribirCrudo()`.
+  - L557–L559: firma y `echo` del texto.
+  - L560: línea en blanco.
+  - L561–L564: comentario y `flush()`.
+  - L565–L566: comentario y línea en blanco.
+  - L567–L572: comentario y `@ob_flush()` si hay búfer superior.
+  - L573–L587: comentario sobre por qué NO se usa `fastcgi_finish_request()`.
+  - L588: cierre del método.
+  - L589: cierre de la clase.
+- **Se conecta con:** `RealtimeService`, `JwtService`, `AuthService`, `Response` y las funciones nativas de PHP para streaming (`header`, `ob_*`, `flush`, `connection_aborted`).
+
+## `controllers/UsuarioController.php` (200 líneas)
+- **Rol:** capa HTTP de la gestión de roles y permisos. Lee la petición, delega en `UsuarioService` y traduce la excepción a HTTP. Distingue 403 (no puede) de 409 (sí puede pero la operación no es válida en el estado actual).
+- **Recorrido línea por línea:**
+  - L1–L42: encabezado con las tres responsabilidades, la distinción 403/409 y la nota sobre `requireRol()`.
+  - L43–L46: declaración de la clase y propiedad `$service`.
+  - L47: línea en blanco.
+  - L48–L49: propiedad `$payload` con los datos del admin autenticado.
+  - L50: línea en blanco.
+  - L51–L54: docblock del constructor.
+  - L55–L59: constructor que asigna el servicio y el payload.
+  - L60: línea en blanco.
+  - L61–L67: docblock de `index()`.
+  - L68–L79: firma y lectura de `pagina` y `por_pagina`.
+  - L80–L86: `trim` de los filtros `q` y `rol`.
+  - L87–L101: comentario sobre el acotado de paginación y su justificación.
+  - L102–L103: acota `pagina` (mínimo 1) y `porPagina` (entre 1 y 100).
+  - L104: línea en blanco.
+  - L105–L109: `try`, delegación en `listar()` y respuesta 200 OK.
+  - L110–L116: `catch` de InvalidArgumentException (422) y Throwable (500).
+  - L117: cierre del método.
+  - L118: línea en blanco.
+  - L119–L127: docblock de `roles()`.
+  - L128–L134: firma y delegación en `listarRoles()` con respuesta 200 OK.
+  - L135: línea en blanco.
+  - L136–L145: docblock de `cambiarRol()` explicando por qué es PATCH.
+  - L146–L157: firma, `try` y lectura del cuerpo con `CuerpoJson::leer()`.
+  - L158–L165: buscar `rol` y lanzar InvalidArgumentException 422 si falta.
+  - L166–L171: pasa el rol a string y lo limpia con `trim`.
+  - L172–L181: comentario y obtención del `idAdminActual` desde el payload del token.
+  - L182: línea en blanco.
+  - L183–L185: delega `cambiarRol` y responde 200 OK.
+  - L186–L198: `catch` de InvalidArgumentException (422), RuntimeException (400) y Throwable (500).
+  - L199: cierre del método.
+  - L200: cierre de la clase.
+- **Se conecta con:** `UsuarioService`, `CuerpoJson`, `Response` y el `payload` del JWT inyectado por la ruta.
+
+---
