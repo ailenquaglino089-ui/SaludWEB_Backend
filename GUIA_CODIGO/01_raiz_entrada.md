@@ -1,0 +1,498 @@
+# Guía de código — Backend · Raíz (entrada y datos)
+
+> Recorrido línea por línea de los archivos de la raíz que montan el sistema.
+> Índice general en ../GUIA_DE_CODIGO.md
+
+Documenta, en este orden: `index.php`, `routes.php`, `db.php`, `.htaccess`, `composer.json`, `migrar_mysql_a_sqlite.php`, `seed_pacientes.php`, `sembrar_datos_demo.php`.
+
+---
+
+## `index.php` (11 líneas)
+
+- **Rol:** Front Controller. Único punto de entrada HTTP: recibe toda petición (redirigida por `.htaccess`), carga las rutas y despacha contra el `Router`.
+- **Recorrido línea por línea:**
+  - L1: `<?php` — apertura del script.
+  - L2–L4: comentarios de cabecera: punto de entrada de la API del backend; Front Controller; aclara que todas las peticiones llegan acá por `.htaccess`.
+  - L5: línea en blanco (separador).
+  - L6: comentario: incluye `routes.php`, que a su vez carga `bootstrap.php` con las dependencias.
+  - L7: `require_once __DIR__ . '/routes.php';` — carga las rutas y arma el `$router` (incluye bootstrap por transitividad).
+  - L8: línea en blanco.
+  - L9–L10: comentarios: despacha la ruta actual leyendo método HTTP y URL; aclara que `$router` es una instancia de `Router` creada en `bootstrap.php`.
+  - L11: `$router->dispatch($_SERVER['REQUEST_METHOD'], $_SERVER['REQUEST_URI']);` — ejecuta el despacho hacia el manejador correspondiente.
+- **Se conecta con:** `routes.php` (require), `core/bootstrap.php` (indirecto), `core/Router` (`dispatch`). Es invocado por `.htaccess`.
+
+---
+
+## `routes.php` (922 líneas)
+
+- **Rol:** Declara todas las rutas de la API REST y arma las cabeceras CORS/seguridad y el preflight. Carga `core/bootstrap.php`, que crea las dependencias que inyecta en cada manejador (`$router`, servicios, repositorios, `$authMiddleware`, `$jwtService`, `$authService`, `$rateLimiter`, etc.).
+- **Recorrido línea por línea:**
+  - L1: `<?php`.
+  - L2–L18: cabecera: API REST Programación IV; backend que expone SOLO JSON; arquitectura Backend/Frontend/Mobile; clasificación de rutas (públicas / protegidas / admin).
+  - L19: en blanco.
+  - L20–L26: comentario de CONFIGURACIÓN DE HEADERS (CORS + seguridad); aclara whitelist explícita, nunca `*` con credentials.
+  - L27: en blanco.
+  - L28–L33: comentarios que explican cómo se arma `$corsOrigenes`: `getenv`, `explode`, `array_map('trim')`, `array_filter`, `array_values`.
+  - L34–L37: `$corsOrigenes = array_values(array_filter(array_map('trim', explode(',', getenv('CORS_ORIGINS') ?: '<defaults>'))));` — lista blanca de orígenes permitidos.
+  - L38: en blanco.
+  - L39–L44: comentarios: lee `HTTP_ORIGIN` con `?? ''`; sólo se envían cabeceras CORS si hay Origin y está en la whitelist (`in_array` estricto).
+  - L45–L62: `if ($origen !== '' && in_array($origen, $corsOrigenes, true)) { ... }` — emite `Access-Control-Allow-Origin`, `Allow-Credentials`, `Allow-Methods`, `Allow-Headers` (incluye `X-Correlation-Id`) y `Vary: Origin`.
+  - L63: en blanco.
+  - L64–L72: cabeceras de seguridad: `X-Content-Type-Options: nosniff` (L66), `X-Frame-Options: DENY` (L68), `Referrer-Policy: no-referrer` (L70), `X-XSS-Protection` (L72).
+  - L73: en blanco.
+  - L74–L75: `Content-Type: application/json; charset=utf-8` para toda la API.
+  - L76: en blanco.
+  - L77–L85: manejo del preflight: si `REQUEST_METHOD === 'OPTIONS'` responde `204` y hace `exit`.
+  - L86: en blanco.
+  - L87–L91: comentarios + `require_once __DIR__ . '/core/bootstrap.php';` — carga sesión, DB, Router, repos, servicios, controladores y crea `$router`, `$authMiddleware`, etc.
+  - L92: en blanco.
+  - L93–L95: separador de sección RUTAS PÚBLICAS.
+  - L96: en blanco.
+  - L97–L109: `GET /api/health` — health check; devuelve `Response::ok` con status, mensaje, `timestamp` (`date('c')`), versión y auth.
+  - L110: en blanco.
+  - L111–L122: `GET /api/obras-sociales` — catálogo público; `try/catch` que responde 500 genérico si falla; usa `$obraSocialRepo->obtenerTodas()`.
+  - L123: en blanco.
+  - L124–L130: `GET /api/medicos` — listado público; instancia `MedicoController` y llama `index()`.
+  - L131: en blanco.
+  - L132–L139: `GET /api/medicos/{id}` — detalle público; castea `(int) $id` y llama `show()`.
+  - L140: en blanco.
+  - L141–L154: `GET /api/pacientes` — listado público; `try/catch` con 500 y JSON; `PacienteController->index()`.
+  - L155: en blanco.
+  - L156–L168: `GET /api/pacientes/{id}` — detalle público; `show((int) $id)`.
+  - L169: en blanco.
+  - L170–L172: separador AUTENTICACIÓN (pública: login y registro).
+  - L173: en blanco.
+  - L174–L187: `POST /api/auth/registro` — registro público; inyecta `$authService, $rateLimiter`; `AuthController->registro()`.
+  - L188: en blanco.
+  - L189–L201: `POST /api/auth/login` — login público; devuelve JWT; `AuthController->login()`.
+  - L202: en blanco.
+  - L203–L216: `POST /api/auth/sso` — login con SSO (Google/Microsoft); `AuthController->sso()`.
+  - L217: en blanco.
+  - L218–L220: separador RUTAS PROTEGIDAS (requieren JWT).
+  - L221: en blanco.
+  - L222–L229: `GET /api/auth/me` — datos del usuario autenticado; `verificarToken()` (401) y `obtenerUsuarioActual()`.
+  - L230: en blanco.
+  - L231–L240: `POST /api/auth/vincular` — vincula cuenta con ficha; body `tipo`/`documento`; `verificarToken()` + `vincular()`.
+  - L241: en blanco.
+  - L242–L249: `POST /api/auth/logout` — cierra sesión; `verificarToken()` + `logout()`.
+  - L250: en blanco.
+  - L251–L258: `POST /api/auth/cambiar-contrasena` — protegida; `verificarToken()` + `cambiarContrasena()`.
+  - L259: en blanco.
+  - L260–L271: `POST /api/medicos` — crear médico (SOLO ADMIN); `verificarToken()` + `requireRol($payload, ['admin'])`; `store()`.
+  - L272: en blanco.
+  - L273–L284: `PUT /api/medicos/{id}` — actualizar médico (SOLO ADMIN); `update((int) $id)`.
+  - L285: en blanco.
+  - L286–L294: `PATCH /api/medicos/{id}` — misma lógica que PUT; `update((int) $id)`.
+  - L295: en blanco.
+  - L296–L305: `DELETE /api/medicos/{id}` — eliminar médico (SOLO ADMIN); `destroy((int) $id)`.
+  - L306: en blanco.
+  - L307–L319: `POST /api/pacientes` — crear paciente (protegida); `verificarToken()`; `store()`.
+  - L320: en blanco.
+  - L321–L333: `PUT /api/pacientes/{id}` — actualizar paciente (protegida); `update((int) $id)`.
+  - L334: en blanco.
+  - L335–L346: `PATCH /api/pacientes/{id}` — actualización parcial; mismo comportamiento que PUT.
+  - L347: en blanco.
+  - L348–L362: `DELETE /api/pacientes/{id}` — eliminar paciente (SOLO ADMIN); `requireRol`; `destroy()`.
+  - L363: en blanco.
+  - L364–L376: `GET /api/prescripciones` — listar prescripciones (protegida: dato clínico); `index()`.
+  - L377: en blanco.
+  - L378–L390: `GET /api/prescripciones/{id}` — ver una prescripción (protegida); `show((int) $id)`.
+  - L391: en blanco.
+  - L392–L408: `POST /api/prescripciones` — crear (SOLO MÉDICO); `requireRol($payload, ['medico'])`; `store()`.
+  - L409: en blanco.
+  - L410–L425: `PUT /api/prescripciones/{id}` — actualizar (SOLO MÉDICO); `update((int) $id)`.
+  - L426: en blanco.
+  - L427–L440: `PATCH /api/prescripciones/{id}` — actualización parcial (SOLO MÉDICO).
+  - L441: en blanco.
+  - L442–L454: `PATCH /api/prescripciones/{id}/estado` — cambiar estado (protegida); `cambiarEstado()`.
+  - L455: en blanco.
+  - L456–L470: `DELETE /api/prescripciones/{id}` — eliminar (SOLO ADMIN); `destroy()`.
+  - L471: en blanco.
+  - L472–L507: separador del módulo TURNERA: explica por qué no se usa tiempo real en la turnera, cuándo se justifica push, y qué se agregó después (canal SSE para el panel de gestión).
+  - L508: en blanco.
+  - L509–L512: separador TURNERA - CATÁLOGOS PÚBLICOS (datos de catálogo, no clínicos).
+  - L513: en blanco.
+  - L514–L520: `GET /api/especialidades` — listado con conteo de médicos; `EspecialidadController->index()`.
+  - L521: en blanco.
+  - L522–L526: `GET /api/especialidades/{id}` — detalle; `show((int) $id)`.
+  - L527: en blanco.
+  - L528–L530: separador TURNERA - AGENDA PÚBLICA.
+  - L531: en blanco.
+  - L532–L538: `GET /api/disponibilidades?id_medico=...` — agenda publicada; pública a propósito; `index()`.
+  - L539: en blanco.
+  - L540–L547: `GET /api/citas/disponibilidad?id_medico=...&fecha=...` — turnos concretos; devuelve sólo libre/ocupado, nunca datos de terceros; `disponibilidad()`.
+  - L548: en blanco.
+  - L549–L565: `GET /api/citas/agenda?...` — agenda unificada; PROTEGIDA (devuelve datos completos de cada turno); `verificarToken()` + `agenda()`.
+  - L566: en blanco.
+  - L567–L569: separador TURNERA - ACCIONES POR TOKEN (públicas, sin login).
+  - L570: en blanco.
+  - L571–L573: comentario: el link lleva token (no JWT) porque viene de correo/WhatsApp sin sesión; dura 7 días y resuelve a un único turno.
+  - L574: en blanco.
+  - L575–L579: `GET /api/notificaciones/token/{token}` — ver de qué turno se trata; `resolverPorToken()`.
+  - L580: en blanco.
+  - L581–L585: `POST /api/notificaciones/token/{token}/confirmar` — confirmar asistencia; `confirmarPorToken()`.
+  - L586: en blanco.
+  - L587–L591: `POST /api/notificaciones/token/{token}/cancelar` — liberar el horario; `cancelarPorToken()`.
+  - L592: en blanco.
+  - L593–L595: separador TURNERA - RUTAS PROTEGIDAS.
+  - L596: en blanco.
+  - L597–L604: `GET /api/citas` — mis turnos / agenda filtrable; el alcance sale del token; `index()`.
+  - L605: en blanco.
+  - L606–L611: `GET /api/citas/{id}` — ver un turno puntual; `show((int) $id)`.
+  - L612: en blanco.
+  - L613–L618: `POST /api/citas` — reservar turno; `store()`.
+  - L619: en blanco.
+  - L620–L627: `POST /api/citas/{id}/cancelar` — cancelar y liberar horario; ruta propia por ser la acción más frecuente; `cancelar()`.
+  - L628: en blanco.
+  - L629–L636: `PATCH /api/citas/{id}/estado` — cambiar estado; qué transiciones permite cada rol lo define el servicio; `cambiarEstado()`.
+  - L637: en blanco.
+  - L638–L645: `DELETE /api/citas/{id}` — borrar turno (SOLO ADMIN); `requireRol` + `destroy()`.
+  - L646: en blanco.
+  - L647–L653: `POST /api/disponibilidades` — publicar bloque de atención; `store()`.
+  - L654: en blanco.
+  - L655–L660: `PUT /api/disponibilidades/{id}` — editar/ocultar bloque; `update((int) $id)`.
+  - L661: en blanco.
+  - L662–L666: `PATCH /api/disponibilidades/{id}` — misma lógica que PUT; `update()`.
+  - L667: en blanco.
+  - L668–L673: `DELETE /api/disponibilidades/{id}` — quitar bloque; `destroy()`.
+  - L674: en blanco.
+  - L675–L680: `GET /api/notificaciones` — avisos del usuario autenticado; `index()`.
+  - L681: en blanco.
+  - L682–L689: `POST /api/notificaciones/recordatorios` — generar recordatorios pendientes; idempotente; `generarRecordatorios()`.
+  - L690: en blanco.
+  - L691–L698: `POST /api/notificaciones/procesar` — enviar avisos pendientes (SOLO ADMIN); `requireRol` + `procesar()`.
+  - L699: en blanco.
+  - L700–L705: `POST /api/notificaciones/{id}/reintentar` — reintentar aviso fallido; `reintentar((int) $id)`.
+  - L706: en blanco.
+  - L707–L709: separador TURNERA - PANEL DE GESTIÓN (médico o admin).
+  - L710: en blanco.
+  - L711–L719: `GET /api/estadisticas` — métricas de gestión por REST (no tiempo real); `index()`.
+  - L720: en blanco.
+  - L721–L723: separador TURNERA - GESTIÓN DEL CATÁLOGO (solo admin).
+  - L724: en blanco.
+  - L725–L731: `POST /api/especialidades` — crear; `requireRol(['admin'])`; `store()`.
+  - L732: en blanco.
+  - L733–L739: `PUT /api/especialidades/{id}` — actualizar (admin); `update()`.
+  - L740: en blanco.
+  - L741–L746: `PATCH /api/especialidades/{id}` — actualización parcial (admin).
+  - L747: en blanco.
+  - L748–L754: `DELETE /api/especialidades/{id}` — eliminar (admin); `destroy()`.
+  - L755: en blanco.
+  - L756–L787: separador del módulo "Gestión de roles y permisos": las tres rutas son exclusivas de admin; explica el orden de declaración y por qué `matchRoute()` compara cantidad de segmentos antes de reemplazar `{param}`.
+  - L788–L794: `GET /api/usuarios/roles` — roles válidos (SOLO ADMIN); `UsuarioController(...)->roles()`.
+  - L795: en blanco.
+  - L796–L802: `GET /api/usuarios` — listado paginado con filtros (SOLO ADMIN); `index()`.
+  - L803: en blanco.
+  - L804–L810: `PATCH /api/usuarios/{id}/rol` — cambiar rol (SOLO ADMIN); `cambiarRol((int) $id)`.
+  - L811: en blanco.
+  - L812–L846: separador del módulo "Primera funcionalidad en tiempo real" (SSE): aclara qué cambia y qué no, por qué no se duplica el estado y por qué se reemplaza el polling del panel.
+  - L847: en blanco.
+  - L848–L874: `GET /api/eventos` — canal SSE; token en el query (EventSource no admite headers); `RealtimeController->canal()` (no termina: queda en bucle).
+  - L875: en blanco.
+  - L876–L893: `GET /api/eventos/estado` — diagnóstico del módulo (JSON normal); `estado()`.
+  - L894: en blanco.
+  - L895–L898: separador del manejador de rutas no encontradas (404).
+  - L899–L921: `$router->notFound(function () { ... })` — registra el 404 en JSON: `Logger::warn('ruta no encontrada (404)', Peticion::atributos())` (L907), `http_response_code(404)` (L910) y `echo json_encode([... 'requestId' => CorrelationId::actual()], JSON_UNESCAPED_UNICODE)` (L916–L921).
+  - L922: `});` — cierra el closure de `notFound`.
+- **Se conecta con:** `core/bootstrap.php` (require), `core/Router` (`get/post/put/patch/delete/notFound`), `core/Response`, `core/AuthMiddleware`, `core/Logger`, `core/Peticion`, `core/CorrelationId`, controladores y servicios del árbol `controllers/` y `services/`. Es requerido por `index.php`.
+
+---
+
+## `db.php` (643 líneas)
+
+- **Rol:** Única puerta de acceso a la base: carga variables de entorno, fija zona horaria y errores, abre la conexión PDO a SQLite con sus PRAGMA, crea todo el esquema (tablas, índices y trigger) e inserta datos de ejemplo sólo si las tablas están vacías. Lo incluyen tanto el arranque HTTP como los scripts CLI.
+- **Recorrido línea por línea:**
+  - L1: `<?php`.
+  - L2–L37: cabecera: qué hace el archivo (conectar, PRAGMA, crear tablas, sembrar); comparativa SQLite vs MySQL/MariaDB y lo que se pierde (escritura serializada, con WAL los lectores concurren).
+  - L38: en blanco.
+  - L39–L51: comentario CARGA DE VARIABLES DE ENTORNO: todo se lee con `getenv()`, por eso `.env` se carga antes; explica el doble include con `bootstrap.php` (HTTP vs CLI) y que `Env::cargar()` es idempotente.
+  - L52–L53: `require_once __DIR__ . '/core/Env.php';` y `Env::cargar();` — carga el `.env`.
+  - L54: en blanco.
+  - L55–L72: comentario ZONA HORARIA: por qué se fija acá (`Europe/Berlin` en muchas instalaciones desalineaba PHP de la base) y que `db.php` es el punto común de todos los caminos.
+  - L73: `date_default_timezone_set(getenv('APP_TIMEZONE') ?: 'America/Argentina/Buenos_Aires');`.
+  - L74: en blanco.
+  - L75–L88: configuración de errores: lee `APP_ENV` (L80), calcula `$showErrors` (L82), aplica `display_errors` (L84), `display_startup_errors` (L86) y `error_reporting(E_ALL)` (L88).
+  - L89: en blanco.
+  - L90–L100: comentario UBICACIÓN DEL ARCHIVO: `DB_DATABASE`, resolución relativa contra la raíz del backend, y que `storage/` está en `.gitignore`.
+  - L101–L105: `$rutaBase` (L101); `$esAbsoluta` con detección de `/`, `\` o letra de unidad (L104); `$rutaDb` absoluta o relativa a `__DIR__` (L105).
+  - L106: en blanco.
+  - L107–L115: asegura el directorio: `$directorio = dirname($rutaDb)` (L110) y `@mkdir($directorio, 0777, true)` si no existe (L111–L115).
+  - L116: en blanco.
+  - L117–L130: `try { ... }` con la CONEXIÓN: `new PDO('sqlite:' . $rutaDb, null, null, [ATTR_ERRMODE => ERRMODE_EXCEPTION, ATTR_DEFAULT_FETCH_MODE => FETCH_ASSOC])` (L127–L130).
+  - L131: en blanco.
+  - L132–L139: comentario PRAGMA: se activan por conexión y por eso van acá.
+  - L140: en blanco.
+  - L141–L147: `PRAGMA foreign_keys = ON` (L147) — respeta `ON DELETE CASCADE`/`SET NULL`.
+  - L148: en blanco.
+  - L149–L154: `PRAGMA journal_mode = WAL` (L154) — lecturas concurrentes con la escritura (el canal SSE lee mientras la turnera escribe).
+  - L155: en blanco.
+  - L156–L161: `PRAGMA busy_timeout = 5000` (L161) — espera hasta 5 s ante "database is locked".
+  - L162: en blanco.
+  - L163–L167: `PRAGMA synchronous = NORMAL` (L167) — evita un fsync por escritura con el nivel de durabilidad adecuado para WAL.
+  - L168–L183: `catch (PDOException $e)`: responde 500 y arma una página HTML de error con `htmlspecialchars` (L173–L181) y `exit` (L182).
+  - L184: en blanco.
+  - L185–L200: comentario CREACIÓN DE TABLAS: equivalencias MySQL→SQLite (`AUTO_INCREMENT`, `VARCHAR`, `TINYINT`, `ENUM`, motores/codificación).
+  - L201: en blanco.
+  - L202–L205: `CREATE TABLE obras_sociales (id, nombre_obra)`.
+  - L206: en blanco.
+  - L207–L221: `pacientes`: comentario sobre `dni UNIQUE` y NULLs (L207–L210), `CREATE TABLE` (L211–L218) e índice `idx_pacientes_nombre` (L219–L221).
+  - L222: en blanco.
+  - L223–L232: `triages` con FK `pacientes(id) ON DELETE CASCADE`.
+  - L233: en blanco.
+  - L234–L242: `medicos`.
+  - L243: en blanco.
+  - L244–L250: `medicamentos`.
+  - L251: en blanco.
+  - L252–L272: `prescripciones`: `medicamentos TEXT` como JSON; `id_medico` NULL con `ON DELETE SET NULL` (evita los tres ALTER que hacía MySQL).
+  - L273: en blanco.
+  - L274–L279: `auditoria`.
+  - L280: en blanco.
+  - L281–L296: `usuarios`: `email UNIQUE`, `tipo_usuario` con `CHECK IN ('paciente','medico','admin')`, FKs a paciente/médico con `SET NULL`.
+  - L297: en blanco.
+  - L298–L325: separador MÓDULO TURNERA: explica la técnica de concurrencia `UNIQUE (id_medico, fecha, hora, slot_reservado)` y la semántica de NULL para cancelar/liberar.
+  - L326: en blanco.
+  - L327–L336: `especialidades` (`nombre UNIQUE`).
+  - L337: en blanco.
+  - L338–L366: `disponibilidades`: comentario (agenda recurrente, `dia_semana` ISO-8601 en PHP, `duracion_minutos`, `activo`) y `CREATE TABLE` con FK a médicos `ON DELETE CASCADE`.
+  - L367: índice `idx_disponibilidad_medico_dia`.
+  - L368: en blanco.
+  - L369–L408: `citas`: comentario sobre `estado`, `slot_reservado`, `creado_por_paciente` y `actualizado_at` (L369–L391) y `CREATE TABLE` con `UNIQUE (id_medico, fecha, hora, slot_reservado)` (L392–L408).
+  - L409–L411: índices `idx_citas_paciente`, `idx_citas_medico_dia`, `idx_citas_estado_fecha`.
+  - L412: en blanco.
+  - L413–L431: trigger `trg_citas_actualizado_at`: comentario (como no contamina `rowCount()` y por qué no hay recursión) y `CREATE TRIGGER ... AFTER UPDATE ... SET actualizado_at = datetime('now','localtime')`.
+  - L432: en blanco.
+  - L433–L472: `notificaciones`: comentario (no es fuente de verdad, tipos/canales/estados, `token_cancelacion` y `UNIQUE (id_cita, tipo, canal)`) y `CREATE TABLE`.
+  - L473: índice `idx_notificaciones_estado`.
+  - L474: en blanco.
+  - L475–L516: `eventos_realtime`: comentario (outbox, sólo la señal, canales, tipos, `datos` e `id`/`creado_at`) y `CREATE TABLE`.
+  - L517–L526: comentario de índices y creación de `idx_eventos_canal_id` (L523) e `idx_eventos_creado` (L526).
+  - L527: en blanco.
+  - L528–L531: separador INSERCIÓN DE DATOS DE EJEMPLO (sólo si las tablas están vacías).
+  - L532: en blanco.
+  - L533–L541: obras sociales: `$obrasCount` (L534), comentario y `if ($obrasCount === 0)` con `INSERT` de Particular/OSDE/PAMI (L540).
+  - L542: en blanco.
+  - L543–L561: médicos: `$medicosCount` (L545), `if === 0`, `prepare` (L549), arreglo `$default` (L551–L556) y `foreach` con `execute` (L558–L560).
+  - L562: en blanco.
+  - L563–L575: medicamentos: `$medicamentosCount` (L565), `if === 0`, `prepare` (L569) y `foreach` con la lista de fármacos (L571–L574).
+  - L576: en blanco.
+  - L577–L595: pacientes: `$pacientesCount` (L579), `if === 0`, `prepare` (L583), `$defaults` (L585–L589) y `foreach` con `execute` (L591–L594).
+  - L596: en blanco.
+  - L597–L601: separador SEMILLA DEL MÓDULO TURNERA (sólo primera vez).
+  - L602: en blanco.
+  - L603–L624: especialidades: comentario `INSERT OR IGNORE + SELECT DISTINCT` derivadas de médicos (L603–L613), `$pdo->exec(...)` (L610–L614), `$especialidadesCount` (L617) y catálogo mínimo de respaldo si no hay ninguna (L618–L624).
+  - L625: en blanco.
+  - L626–L643: disponibilidades: comentario (agenda L–V, `INSERT ... SELECT` con `NOT EXISTS` para ser idempotente) y `$pdo->exec` con `CROSS JOIN` de días 1–5 y `'08:00:00'–'12:00:00'`, turnos de 30 min.
+- **Se conecta con:** `core/Env.php` (require), PDO/SQLite (`storage/saludweb.sqlite`), `core/bootstrap.php` (lo incluye), `migrar_mysql_a_sqlite.php`, `seed_pacientes.php` y `sembrar_datos_demo.php` (lo incluyen por CLI).
+
+---
+
+## `.htaccess` (4 líneas)
+
+- **Rol:** Configuración de Apache para reescribir todas las URLs al Front Controller, habilitando rutas limpias (`/api/...`).
+- **Recorrido línea por línea:**
+  - L1: `RewriteEngine On` — activa el motor de reescritura.
+  - L2: `RewriteCond %{REQUEST_FILENAME} !-f` — sólo actúa si la petición NO apunta a un archivo real.
+  - L3: `RewriteCond %{REQUEST_FILENAME} !-d` — ni a un directorio real.
+  - L4: `RewriteRule ^(.*)$ index.php [QSA,L]` — redirige a `index.php` conservando el query string (`QSA`) y deteniendo el procesamiento (`L`).
+- **Se conecta con:** `index.php` (destino de la reescritura).
+
+---
+
+## `composer.json` (13 líneas)
+
+- **Rol:** Manifiesto de Composer: dependencia PHP y scripts de desarrollo/pruebas.
+- **Recorrido línea por línea:**
+  - L1: `{` — abre el objeto JSON.
+  - L2–L4: `"require"` con la dependencia `firebase/php-jwt: "*"` — librería de JWT.
+  - L5–L8: `"scripts"`: `"dev"` levanta la API con `php -S 127.0.0.1:8000 index.php`; `"test"` corre `php tests/run.php`.
+  - L9–L12: `"scripts-descriptions"` con la descripción de `dev` y `test`.
+  - L13: `}` — cierra el objeto JSON.
+- **Se conecta con:** `vendor/` (dependencias instaladas), `index.php` (servidor dev apunta a él), `tests/run.php` (suite).
+
+---
+
+## `migrar_mysql_a_sqlite.php` (249 líneas)
+
+- **Rol:** Script CLI que copia los datos de una base MySQL/MariaDB a la base SQLite del proyecto, tabla por tabla. Modos: importación limpia (default), `--append`, `--dry-run` y `--tablas=a,b,c`. Incluye `db.php` (que crea el esquema SQLite).
+- **Recorrido línea por línea:**
+  - L1: `<?php`.
+  - L2–L40: cabecera: para qué sirve (sobre todo recuperar cuentas de usuario), cómo se usa, configuración del origen MySQL, destino SQLite y que es idempotente.
+  - L41: `declare(strict_types=1);`.
+  - L42: en blanco.
+  - L43–L45: comentario + `require __DIR__ . '/db.php';` — deja lista la conexión SQLite y el esquema.
+  - L46: en blanco.
+  - L47–L49: separador Argumentos de línea de comandos.
+  - L50–L51: `$modoAppend = in_array('--append', $argv, true);` y `$modoDryRun = in_array('--dry-run', $argv, true);`.
+  - L52: en blanco.
+  - L53–L55: comentario de `--tablas=` y `$soloTablas = null;`.
+  - L56–L60: `foreach ($argv ...)` que detecta `--tablas=` y arma el arreglo con `substr($arg, 9)` y `array_filter(array_map('trim', explode(',', ...)))`.
+  - L61: en blanco.
+  - L62–L67: comentario "orden de copia: padres antes que hijos".
+  - L68–L82: arreglo `$tablas` con las 13 tablas en orden.
+  - L83: en blanco.
+  - L84–L90: si `$soloTablas` no es null, filtra con `array_intersect`; si queda vacío, escribe error a STDERR y `exit(1)`.
+  - L91: en blanco.
+  - L92–L94: separador Conexión al origen (MySQL).
+  - L95–L100: variables `$myHost`, `$myPort`, `$myBase` (`MYSQL_DATABASE` o `DB_NAME` o `saludweb`), `$myUser`, `$myPass` (vacío si `getenv` devuelve false).
+  - L101: en blanco.
+  - L102–L105: `echo` de encabezado con origen, destino y modo (DRY-RUN/agregar/limpia).
+  - L106: en blanco.
+  - L107–L114: separador "Chequeo previo del servidor": explica que el saludo de MySQL puede colgar la conexión.
+  - L115–L117: `$errno`, `$errstr` y `@stream_socket_client("tcp://$myHost:$myPort", $errno, $errstr, 5)`.
+  - L118–L122: si el socket falla, error a STDERR pidiendo verificar el servidor y `exit(1)`.
+  - L123: `stream_set_timeout($sock, 5);`.
+  - L124–L125: comentario: el servidor manda un byte al conectarse.
+  - L126–L133: `fread($sock, 1)`, `stream_get_meta_data`, `fclose`; si no llega el saludo, informa "servidor trabado" y `exit(1)`.
+  - L134: en blanco.
+  - L135–L149: `try { $origen = new PDO("mysql:...charset=utf8mb4", ...) }` con `ATTR_ERRMODE`, `ATTR_DEFAULT_FETCH_MODE` y `ATTR_TIMEOUT => 5`.
+  - L150–L157: `catch (PDOException $e)` con mensajes claros y `exit(1)`.
+  - L158: en blanco.
+  - L159–L164: separador Importación: se apagan las FK durante la copia.
+  - L165: `$pdo->exec('PRAGMA foreign_keys = OFF');`.
+  - L166: en blanco.
+  - L167–L168: `$totalFilas = 0;` y `$resumen = [];`.
+  - L169: en blanco.
+  - L170–L177: `foreach ($tablas as $tabla)`: chequea existencia en MySQL con `SHOW TABLES LIKE`; si no existe, agrega al resumen y `continue`.
+  - L178: en blanco.
+  - L179–L186: columnas de SQLite (`PRAGMA table_info`) y de MySQL (`SHOW COLUMNS`), intersección `$comunes`.
+  - L187: en blanco.
+  - L188–L191: si no hay columnas en común, resumen y `continue`.
+  - L192: en blanco.
+  - L193: `SELECT` de las columnas comunes desde MySQL (fetchAll).
+  - L194: en blanco.
+  - L195–L199: si es `$modoDryRun`, agrega al resumen y suma al total sin copiar; `continue`.
+  - L200: en blanco.
+  - L201–L207: `beginTransaction()`; si no es append, `DELETE FROM` la tabla destino (limpia sin perder esquema).
+  - L208: en blanco.
+  - L209–L213: `$verbo` (`INSERT OR IGNORE`/`INSERT`), `$marcadores` y `prepare` del INSERT.
+  - L214: en blanco.
+  - L215–L222: `foreach` de filas con `execute(array_values($fila))` y contador `$copiadas`.
+  - L223: en blanco.
+  - L224: `$pdo->commit();`.
+  - L225–L230: `catch (Throwable $e)`: `rollBack()`, error a STDERR, recicla `foreign_keys = ON` y `exit(1)`.
+  - L231: en blanco.
+  - L232–L233: agrega el resumen de la tabla y suma `$copiadas` al total.
+  - L234: `}` — cierra el `foreach` de tablas.
+  - L235: en blanco.
+  - L236: `$pdo->exec('PRAGMA foreign_keys = ON');` — reactiva las claves foráneas.
+  - L237: en blanco.
+  - L238–L240: separador Reporte.
+  - L241–L244: imprime "--- Tablas ---", el resumen, el total y si fue dry-run.
+  - L245: en blanco.
+  - L246–L249: si no fue dry-run y copió filas, mensaje final: la base ya está poblada y `db.php` no volverá a sembrar.
+- **Se conecta con:** `db.php` (require), PDO MySQL (origen) y PDO SQLite (destino).
+
+---
+
+## `seed_pacientes.php` (93 líneas)
+
+- **Rol:** Script CLI que genera N pacientes aleatorios para probar el paginado de los listados (default 10, o `php seed_pacientes.php 100`). No arma su propia conexión: usa `db.php`.
+- **Recorrido línea por línea:**
+  - L1: `<?php`.
+  - L2–L12: cabecera: uso por CLI, para qué sirve (paginado con muchos registros).
+  - L13: en blanco.
+  - L14–L17: comentario: la conexión y el esquema los deja `db.php`; aclara que este script ya no tiene DSN propio de MySQL.
+  - L18: `require_once __DIR__ . '/db.php';`.
+  - L19: en blanco.
+  - L20–L21: `$cantidad = isset($argv[1]) ? (int)$argv[1] : 10;`.
+  - L22–L27: valida `$cantidad < 1`: mensaje a STDERR y `exit(1)`.
+  - L28: en blanco.
+  - L29–L30: `$obras = $pdo->query('SELECT id FROM obras_sociales')->fetchAll(PDO::FETCH_COLUMN);`.
+  - L31–L34: si no hay obras, usa `[1]` por defecto.
+  - L35: en blanco.
+  - L36–L48: listas `$nombres` (L37–L42) y `$apellidos` (L43–L48) para generar datos.
+  - L49: en blanco.
+  - L50–L55: `$usados = array_flip(array_filter($pdo->query('SELECT dni FROM pacientes')->fetchAll(PDO::FETCH_COLUMN)));` — DNIs ya usados, indexados para búsqueda rápida.
+  - L56: en blanco.
+  - L57–L58: `$stmt = $pdo->prepare('INSERT INTO pacientes (dni, nombre, id_obra_social, activo) VALUES (?, ?, ?, ?)');`.
+  - L59: en blanco.
+  - L60–L64: contadores `$creados`, `$intentos` y `$maxIntentos = $cantidad * 50` (corta ante azar repetido).
+  - L65: en blanco.
+  - L66–L86: bucle `while ($creados < $cantidad && $intentos < $maxIntentos)`: incrementa `$intentos`; genera `$dni` con `random_int(1000000, 99999999)` (L70); descarta si ya está en `$usados` (`continue`, L72–L74); lo marca (L75); arma `"Apellido, Nombre"` (L78); elige obra y `activo` al azar (L80–L81); `execute` del insert (L84) y `$creados++` (L85).
+  - L87: en blanco.
+  - L88–L89: `echo "Se crearon $creados pacientes de prueba.\n";`.
+  - L90–L93: si `$creados < $cantidad`, avisa por STDERR que hubo demasiados DNIs repetidos.
+- **Se conecta con:** `db.php` (require y `$pdo`), tabla `pacientes`.
+
+---
+
+## `sembrar_datos_demo.php` (466 líneas)
+
+- **Rol:** Script CLI que deja datos de demostración limpios: renombra/recastea cuentas, borra/desactiva cuentas sobrantes, crea o adopta la ficha de cada cuenta demo (médico/paciente) y la vincula, apaga fichas fantasma y muestra el resultado. No toca contraseñas. Es idempotente.
+- **Recorrido línea por línea:**
+  - L1: `<?php`.
+  - L2–L50: cabecera: qué hace y qué no (no toca `password`), por qué existe (datos de pruebas acumulados), cómo identifica fichas (matrícula/DNI), idempotencia y que el admin queda sin ficha a propósito.
+  - L51: `declare(strict_types=1);`.
+  - L52: en blanco.
+  - L53: `require __DIR__ . '/db.php';`.
+  - L54: en blanco.
+  - L55–L67: docblock del casting (por qué `rol` con guion bajo y por qué cada email es único).
+  - L68–L85: arreglo `$CASTING`: admin (L71), médicos (L74–L77) y pacientes (L80–L84) con email/nombre/rol.
+  - L86: en blanco.
+  - L87–L106: separador CUENTAS QUE SE BORRAN: explica por qué se borran y no se desactivan, y la advertencia si tuvieran historial clínico.
+  - L107–L110: `$BORRAR = ['prog4@correo.com', 'prueba.turnera.%'];` (el `%` es comodín SQL).
+  - L111: en blanco.
+  - L112–L131: separador FICHAS DE LA DEMO: por qué cada cuenta necesita ficha, que el nombre debe coincidir con el de la cuenta, y que los DNI/matrículas inventados usan rango `100.xxx`.
+  - L132–L157: `$DEMO_MEDICOS`: 4 médicos con email/nombre/matrícula/especialidad.
+  - L158: en blanco.
+  - L159–L161: docblock de `$DEMO_PACIENTES`.
+  - L162–L193: `$DEMO_PACIENTES`: 5 pacientes con email/nombre/dni/obra.
+  - L194: en blanco.
+  - L195–L199: comentario + `$nombresMedicos = array_column(...)` y `$nombresPacientes = array_column(...)`.
+  - L200: en blanco.
+  - L201–L203: separador EJECUCIÓN.
+  - L204: en blanco.
+  - L205–L210: comentario de `$renombres`: por qué es una lista aparte del casting (primero renombrar, después recastear).
+  - L211–L229: arreglo `$renombres` (email viejo => nuevo, incluidos los de la corrida anterior; el último mapea a `null`).
+  - L230: en blanco.
+  - L231–L234: comentario: primero renombrar, después casting.
+  - L235–L244: `foreach ($renombres ...)`: salta los `null`; `UPDATE usuarios SET email = ? WHERE email = ? AND email <> ?`; informa si `rowCount() > 0`.
+  - L245: en blanco.
+  - L246: comentario: se aplica el casting final.
+  - L247–L251: `prepare('UPDATE usuarios SET nombre = ?, tipo_usuario = ? WHERE email = ?')` y `foreach ($CASTING ...)` con `echo`.
+  - L252: en blanco.
+  - L253–L258: comentario: el borrado va después del casting a propósito (idempotencia).
+  - L259–L265: `foreach ($BORRAR ...)`: `DELETE FROM usuarios WHERE email LIKE ?` e informa `rowCount()`.
+  - L266: en blanco.
+  - L267–L274: comentario: cuentas fuera del casting se desactivan (`activo = 0`) y no se borran; se excluyen prefijos de pruebas `descartable.%`/`verificacion.%` (más abajo).
+  - L275–L277: `$emails = array_column($CASTING, 'email')`, `$placeholders` y `prepare` del `UPDATE ... activo = 0 WHERE email NOT IN (...) AND email NOT LIKE 'descartable.%' AND email NOT LIKE 'verificacion.%'`.
+  - L278–L283: cierre del SQL y `$s->execute($emails)`.
+  - L284–L287: `$desactivados = $s->rowCount()` y aviso si corresponde.
+  - L288: en blanco.
+  - L289–L300: separador FICHAS: se escriben médicos/pacientes en el mismo script porque cuenta sin ficha no opera; identificación igual a la de vincular.
+  - L301: en blanco.
+  - L302–L307: docblock de `normalizarNombre`.
+  - L308–L318: `function normalizarNombre(string $texto)`: `mb_strtolower` + `strtr` de acentos (L310–L313) y `mb_ereg_replace('\s+', ' ', ...)` con `trim` (L315–L317).
+  - L319: en blanco.
+  - L320–L323: comentario de la sección Médicos (busca por matrícula, luego por nombre, si no crea).
+  - L324–L328: prepares: `$buscarMed` (matrícula), `$buscarMedPorNombre`, `$crearMed`, `$actualizarMed`, `$vincularMed`.
+  - L329: en blanco.
+  - L330: `echo ... 'FICHAS DE MÉDICO' ...`.
+  - L331–L364: `foreach ($DEMO_MEDICOS ...)`: busca por matrícula (L334–L338); si no, por nombre (L343–L348); si no hay ficha, crea (L350–L353); si hay, la reescribe con datos canónicos (L354–L360); vincula al usuario (L362) e informa origen/ficha (L363).
+  - L365: en blanco.
+  - L366–L368: comentario de la sección Pacientes (por DNI, que es UNIQUE).
+  - L369–L373: prepares: `$buscarPac`, `$buscarPacPorNombre`, `$crearPac`, `$actualizarPac`, `$vincularPac`.
+  - L374: en blanco.
+  - L375: `echo ... 'FICHAS DE PACIENTE' ...`.
+  - L376–L403: `foreach ($DEMO_PACIENTES ...)`: busca por DNI (L379–L383); si no, por nombre (L385–L390); crea (L392–L395) o actualiza (L396–L399); vincula (L401) e informa (L402).
+  - L404: en blanco.
+  - L405–L412: separador FICHAS FANTASMA: fichas que copian el nombre del otro rol se apagan, no se borran.
+  - L413: `echo ... 'FICHAS SIN USO' ...`.
+  - L414: en blanco.
+  - L415–L416: `$nombresMedicosNorm` / `$nombresPacientesNorm` con `array_map('normalizarNombre', ...)`.
+  - L417: en blanco.
+  - L418–L424: recorre `pacientes`: si el nombre (normalizado) coincide con el de un médico demo, `UPDATE pacientes SET activo = 0` e informa.
+  - L425: en blanco.
+  - L426–L432: recorre `medicos`: simétrico, apaga médicos cuyo nombre coincide con un paciente demo.
+  - L433: en blanco.
+  - L434–L436: separador RESULTADO.
+  - L437–L443: imprime separadores y consulta `SELECT id, email, nombre, tipo_usuario, activo, id_paciente, id_medico FROM usuarios ORDER BY tipo_usuario, nombre`.
+  - L444: en blanco.
+  - L445–L462: `foreach ($filas ...)`: salta inactivos; calcula la etiqueta de ficha según rol (admin sin ficha; médico `medico#id`; paciente `paciente#id`) e imprime columnas con `str_pad`.
+  - L463: en blanco.
+  - L464: `$admins = $pdo->query("SELECT COUNT(*) ... WHERE tipo_usuario = 'admin' AND activo = 1")->fetch();`.
+  - L465: `echo ... 'administradores activos: ' . $admins['c']`.
+  - L466: `echo 'contraseñas: NO se tocó ninguna'`.
+- **Se conecta con:** `db.php` (require y `$pdo`), tablas `usuarios`, `medicos`, `pacientes`; comparte criterio de vinculación con `AuthService`.
+
+---
