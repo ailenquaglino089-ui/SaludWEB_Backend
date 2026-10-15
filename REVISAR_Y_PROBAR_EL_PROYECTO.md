@@ -186,10 +186,10 @@ corrida:
 
 | Id | Severidad | Resumen | Estado |
 |---|---|---|---|
-| INC-001 | Alta | `GET /api/pacientes` y `/api/pacientes/{id}` son públicas y exponen DNI + nombre de 223 pacientes sin token. | Abierto (recomendación de fix) |
+| INC-001 | Alta | `GET /api/pacientes` y `/api/pacientes/{id}` eran públicas y exponían DNI + nombre de 223 pacientes sin token. | **Resuelto** (token obligatorio; `probar_seguridad`) |
 | INC-002 | Baja (herramienta) | `probar_turnera.php` daba un falso negativo después del mediodía. | **Corregido y re-probado** |
 | INC-003 | Baja (documentación) | `CALIDAD_PROFESIONAL_SOFTWARE.md` decía 49 pruebas de backend; son 50. | **Corregido** |
-| INC-004 | Alta (aceptado) | El registro público permite crear `admin` (`tipo_usuario` en el body). | Abierto por decisión (demo) |
+| INC-004 | Alta (aceptado) | El registro público permitía crear `admin` (`tipo_usuario` en el body). | **Resuelto** (solo `paciente`/`medico`; `probar_seguridad`) |
 
 ---
 
@@ -269,8 +269,8 @@ Ser explícito sobre lo que **no** se pudo correr es parte del trabajo:
 - **Cuentas semilla.** La base migrada conserva los usuarios, pero no sus contraseñas en claro;
   el E2E de tiempo real, que usa `paciente@prueba.com` / `admin@salud.com`, necesita definir
   `PACIENTE_PASSWORD` / `ADMIN_PASSWORD` para esas cuentas.
-- **`INC-001` e `INC-004`** quedan **abiertos**: son decisiones de alcance de este ciclo, no
-  olvidos. Están documentados con su recomendación en `QA/03_reporte_de_incidentes.md`.
+- **`INC-001` e `INC-004`** quedaron **resueltos** el 2026-10-14 y cubiertos por la regresión
+  `php probar_seguridad.php`. El detalle está en `QA/03_reporte_de_incidentes.md`.
 
 ---
 

@@ -88,13 +88,26 @@ class AuthService
         // Genera el hash bcrypt: la contraseña nunca se guarda en texto plano
         $passwordHash = password_hash($password, PASSWORD_BCRYPT);
 
-        // Tipo de usuario (por defecto "paciente")
-        // Lee el tipo de usuario enviado; si no viene, el valor por defecto es "paciente"
+        // Tipo de usuario (por defecto "paciente").
+        // El alta pública SOLO puede crear cuentas de paciente o de médico.
+        // El rol "admin" NUNCA se acepta desde acá: si se permitiera, cualquiera
+        // podría enviar tipo_usuario=admin y quedar con permisos totales (borrar
+        // registros, cambiar roles, procesar avisos). Ser administrador no es una
+        // decisión del usuario que se registra, así que la whitelist deja fuera a
+        // "admin" y cualquier otro valor se rechaza con 422.
         $tipoUsuario = $data['tipo_usuario'] ?? 'paciente';
-        // Lista blanca (whitelist): solo se admiten estos roles
-        if (!in_array($tipoUsuario, ['paciente', 'medico', 'admin'])) {
-            // Si el rol no es válido, se fuerza uno seguro por defecto
-            $tipoUsuario = 'paciente';
+        if (!in_array($tipoUsuario, ['paciente', 'medico'], true)) {
+            // Se registra el intento (sin el resto del cuerpo) para poder ver si
+            // alguien está probando a escalar privilegios por este endpoint.
+            Logger::warn('registro rechazado: rol no permitido en alta pública', [
+                'rol' => is_string($tipoUsuario) ? $tipoUsuario : gettype($tipoUsuario),
+            ]);
+
+            // HTTP 422: el rol pedido no está permitido en el auto-registro
+            throw new \InvalidArgumentException(
+                'El tipo de usuario no es válido. Solo se pueden crear cuentas de paciente o de médico.',
+                422
+            );
         }
 
         // --------------------------------------------------

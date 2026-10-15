@@ -75,6 +75,6 @@ Tras la corrección se volvieron a correr `tests/run.php` (50/50), `probar_roles
 |---|---|
 | Suites ejecutadas con éxito | 14 de 15 |
 | Suites/verificaciones no ejecutadas | 1 (E2E de tiempo real, por entorno) |
-| Pruebas con resultado verde | **50 + 15 + 32 + 12 + 27 = 136** (más las 21 de turnera y las 15 de roles HTTP) |
-| Incidentes abiertos | 2 (INC-001, INC-004) |
-| Incidentes corregidos | 2 (INC-002, INC-003) |
+| Pruebas con resultado verde | **50 + 15 + 32 + 12 + 27 = 136** (más las 21 de turnera, las 15 de roles HTTP y las 9 de seguridad) |
+| Incidentes abiertos | 0 |
+| Incidentes corregidos | 4 (INC-001, INC-002, INC-003, INC-004) |

@@ -17,9 +17,9 @@ administrador · **MED** = solo médico · **TOKEN** = token de notificación (s
 | 2 | GET | `/api/obras-sociales` | P | Catálogo para formularios |
 | 3 | GET | `/api/medicos` | P | Catálogo de profesionales |
 | 4 | GET | `/api/medicos/{id}` | P | Detalle de profesional |
-| 5 | GET | `/api/pacientes` | P | **INC-001** (no debería ser pública) |
-| 6 | GET | `/api/pacientes/{id}` | P | **INC-001** |
-| 7 | POST | `/api/auth/registro` | P | Alta de cuenta (**INC-004**) |
+| 5 | GET | `/api/pacientes` | JWT | Listado de pacientes (ex `INC-001`) |
+| 6 | GET | `/api/pacientes/{id}` | JWT | Detalle de paciente (ex `INC-001`) |
+| 7 | POST | `/api/auth/registro` | P | Alta de paciente/médico (**INC-004**: no admin) |
 | 8 | POST | `/api/auth/login` | P | Login válido / inválido |
 | 9 | POST | `/api/auth/sso` | P | SSO (501 sin configurar) |
 | 10 | GET | `/api/auth/me` | JWT | Datos del usuario actual |
@@ -74,7 +74,8 @@ administrador · **MED** = solo médico · **TOKEN** = token de notificación (s
 | 59 | GET | `/api/eventos` | JWT (post: token por query) | Canal SSE |
 | 60 | GET | `/api/eventos/estado` | JWT (post: token por query) | Diagnóstico del canal |
 
-> Nota: `GET /api/pacientes` (#5) y `GET /api/pacientes/{id}` (#6) son el hallazgo **INC-001**.
+> Nota: `GET /api/pacientes` (#5) y `GET /api/pacientes/{id}` (#6) exigen token por el hallazgo
+> **INC-001** (ya resuelto; antes eran públicas).
 > Los endpoints #59/#60 reciben el token por *query string* porque `EventSource` no admite
 > encabezados; el canal se resuelve contra el token y devuelve 403 si no corresponde al rol.
 
@@ -105,8 +106,8 @@ administrador · **MED** = solo médico · **TOKEN** = token de notificación (s
 | UI sin variables rotas | (CSS) | 0 `var(--x)` sin definir | OK (`verificar_variables`) |
 | Contraste accesible | (CSS) | Tokens con contraste suficiente | OK (`ver_contraste`) |
 | Mobile consume la API | (cliente móvil) | Registro y correlación de eventos | OK (`npm test` Mobile) |
-| Padrón de pacientes no público | #5, #6 | Sin token debería ser 401 | **Falla → INC-001** |
-| Registro no auto-promueve | #7 | `tipo_usuario=admin` no debería aceptarse | **Falla → INC-004** |
+| Padrón de pacientes no público | #5, #6 | Sin token → 401; con token → 200 | OK (`probar_seguridad`) |
+| Registro no auto-promueve | #7 | `tipo_usuario=admin` → 422 | OK (`probar_seguridad`) |
 
 ---
 

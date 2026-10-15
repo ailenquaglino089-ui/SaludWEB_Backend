@@ -138,8 +138,16 @@ $router->get('/api/medicos/{id}', function ($id) use ($medicoService) {
     $controller->show((int) $id);
 });
 
-// GET /api/pacientes - Lista pública de pacientes
-$router->get('/api/pacientes', function () use ($pacienteService) {
+// GET /api/pacientes - Listar pacientes (PROTEGIDA: requiere token)
+// Un paciente tiene nombre y DNI: son datos personales, no de catálogo. Antes
+// esta ruta era pública y cualquiera podía descargar la lista completa de
+// pacientes (nombre + DNI) sin iniciar sesión. Ahora exige un JWT válido.
+// No se exige rol admin a propósito: el formulario de prescripciones la usa
+// como selector de pacientes para el médico, y el listado de gestión, para el
+// admin. Ambos están logueados, así que el token alcanza.
+$router->get('/api/pacientes', function () use ($pacienteService, $authMiddleware) {
+    // Exige Authorization: Bearer <jwt> válido; si falta o expiró → 401
+    $authMiddleware->verificarToken();
     try {
         // Crea el controlador con el servicio de pacientes
         $controller = new PacienteController($pacienteService);
@@ -153,8 +161,11 @@ $router->get('/api/pacientes', function () use ($pacienteService) {
     }
 });
 
-// GET /api/pacientes/{id} - Detalle público de un paciente
-$router->get('/api/pacientes/{id}', function ($id) use ($pacienteService) {
+// GET /api/pacientes/{id} - Detalle de un paciente (PROTEGIDA: requiere token)
+// Mismo motivo que el listado: expone nombre y DNI de una persona.
+$router->get('/api/pacientes/{id}', function ($id) use ($pacienteService, $authMiddleware) {
+    // Exige un JWT válido antes de exponer los datos personales
+    $authMiddleware->verificarToken();
     try {
         // Crea el controlador con el servicio de pacientes
         $controller = new PacienteController($pacienteService);
