@@ -323,6 +323,8 @@ http://127.0.0.1:8000/probar_tiempo_real.php
 
 ## Documentación del proyecto
 
+- **`GUIA_DE_CODIGO.md`** — el mapa del código, archivo por archivo: qué hace cada uno, con
+  quién se conecta y un recorrido por bloques (con números de línea) en los archivos grandes.
 - **`GUIA_TIEMPO_REAL.md`** — el módulo de tiempo real completo: por qué SSE y no WebSocket,
   cómo funciona el canal, cómo se autoriza, las pruebas y las limitaciones conocidas.
 - `AGENDA_DE_TRABAJO.md` — todas las fases, hitos, decisiones y resultados (F1 a F5).
