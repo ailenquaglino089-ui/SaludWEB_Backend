@@ -407,6 +407,10 @@ http://127.0.0.1:8000/probar_tiempo_real.php
 - **`REVISAR_Y_PROBAR_EL_PROYECTO.md`** — la guia "de checklist a evidencia" aplicada al
   proyecto: como se reviso y probo cada modulo, con la evidencia de las corridas (2026-10-14)
   y los incidentes. Los cinco entregables viven en **`QA/`**.
+- **Registro de cambios y pasos del proyecto** — la cronologia del trabajo reciente en los
+  tres repositorios (seguridad, migracion a SQLite/PHP nativo, puesta en marcha, lanzador de
+  escritorio y arreglo del panel en vivo), con el detalle de cada Pull Request:
+  <https://github.com/ailenquaglino089-ui/SaludWEB_Web/blob/main/REGISTRO_DE_CAMBIOS.md>.
 
 ## Calidad del software
 
