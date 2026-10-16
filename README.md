@@ -42,6 +42,9 @@ probar_vinculacion.php      →  suite de pruebas de vinculación de fichas
 probar_turnera.php          →  suite de pruebas del módulo turnera
 probar_tiempo_real.php      →  verificación del módulo de tiempo real (18 pruebas + latencia)
 verificar_turnera.php       →  verificación rápida de salud de la turnera
+probar_seguridad.php        →  regresión de seguridad (401 sin token, 422 al registrar admin)
+resetear_password.php       →  (re)establece la contraseña de una cuenta (solo consola/desarrollo)
+listar_usuarios.php         →  lista las cuentas existentes sin mostrar contraseñas (desarrollo)
 migrar_mysql_a_sqlite.php   →  importa datos de una base MySQL vieja a SQLite (opcional)
 AGENDA_DE_TRABAJO.md        →  planificación, hitos y pasos del proyecto
 PROJECT_BRIEF.md            →  brief del proyecto y entregables
@@ -118,16 +121,55 @@ latencia real abriendo un canal HTTP y publicando un evento.
 ## Puesta en marcha
 
 ### Requisitos
-- PHP 8.x (solo el intérprete de línea de comandos; sirve cualquier instalación, incluido el
-  `php.exe` que trae XAMPP: **no** hace falta el panel de XAMPP, ni Apache, ni MySQL).
-- Composer
+- **PHP 8.x** (solo el intérprete de línea de comandos; **no** hace falta el panel de XAMPP,
+  ni Apache, ni MySQL).
+- **Composer**
 - *(Nada más: la base es SQLite, viene con PHP y se crea sola. No hay que instalar ni
   iniciar ningún servidor de base de datos.)*
 
 > **Sin XAMPP y sin MySQL.** La API usa el **servidor nativo de PHP** (`php -S`) y guarda en
-> un **archivo SQLite** dentro del proyecto. No se levanta Apache ni el servicio de MySQL: si
-> tenés XAMPP instalado, alcanza con usar su `php.exe` desde la terminal, sin abrir el panel de
-> control ni iniciar ningún módulo.
+> un **archivo SQLite** dentro del proyecto. No se levanta Apache ni el servicio de MySQL:
+> XAMPP es totalmente opcional. Si ya tenés XAMPP, alcanza con usar su `php.exe` desde la
+> terminal, sin abrir el panel de control ni iniciar ningún módulo; y si no tenés XAMPP,
+> instalás un PHP propio (se explica abajo).
+
+### Instalar un PHP propio (sin XAMPP)
+
+Esta es la forma recomendada para no depender de XAMPP. En Windows:
+
+1. **Descargar PHP 8** (build "Non Thread Safe", que es el recomendado para CLI) desde
+   <https://windows.php.net/download/>. Elegí, por ejemplo,
+   `php-8.3.x-nts-Win32-vs16-x64.zip`.
+2. **Descomprimirlo** en una carpeta sin espacios, por ejemplo `C:\Users\<usuario>\php83`.
+3. **Crear `php.ini`**: copiá `php.ini-development` a `php.ini` y **descomentá** (sacarle el
+   `;` del principio) estas líneas, para que la API tenga SQLite y los utilitarios:
+   ```ini
+   extension_dir = "ext"
+   extension=pdo_sqlite
+   extension=sqlite3
+   extension=mbstring
+   extension=openssl
+   extension=curl
+   extension=fileinfo
+   extension=zip
+   date.timezone = America/Argentina/Buenos_Aires
+   ```
+4. **Verificar** que quedó bien:
+   ```bash
+   C:\Users\<usuario>\php83\php.exe -v          # muestra la versión
+   C:\Users\<usuario>\php83\php.exe -m          # debe listar pdo_sqlite, sqlite3, mbstring, openssl...
+   ```
+5. Usá esa ruta para arrancar la API (ver el paso 4 más abajo). No hace falta agregar nada
+   al PATH: alcanza con escribir la ruta completa, o definir la variable de entorno
+   `SALUDWEB_PHP` con la ruta al `php.exe`.
+
+> En macOS o Linux, normalmente alcanza con el PHP del sistema
+> (`sudo apt install php-cli php-sqlite3` en Debian/Ubuntu) y la extensión `pdo_sqlite`.
+
+> **¿Todo de una sola vez?** El repo **de la Web** trae scripts de arranque listos
+> (`SaludWEB_Web\scripts\iniciar_saludweb.bat` y `detener_saludweb.bat`) que levantan la API
+> y la web juntas, detectando el PHP solo. Ver "Cómo abrir todo el proyecto" en el README de
+> la Web.
 
 ### 1. Clonar el repositorio
 ```bash
@@ -288,6 +330,28 @@ Después iniciá sesión con esas credenciales (`POST /api/auth/login`).
 > `PATCH /api/usuarios/{id}/rol` (solo admin); o (b) por consola durante la puesta a punto.
 > Este comportamiento se corrigió (incidente **INC-004**) y se verifica con
 > `php probar_seguridad.php`.
+
+### ¿Olvidaste la contraseña de una cuenta? (desarrollo local)
+
+Las contraseñas se guardan como **hash bcrypt** (`password_hash`), que es irreversible: no
+se pueden leer ni recuperar, solo reemplazar. Para volver a entrar en un entorno local, el
+repo trae `resetear_password.php`, que pone una clave nueva a la cuenta indicada:
+
+```bash
+php resetear_password.php admin@salud.com MiClaveNueva123
+```
+
+Qué hace y qué no:
+
+- **Sí**: genera el hash bcrypt (igual que el registro) y lo guarda en la misma base SQLite
+  que usa la API. Verifica el cambio antes de terminar.
+- **No**: no crea cuentas (para eso, el registro) y **no corre desde el navegador**: solo por
+  consola. En producción, el cambio de contraseña va por el endpoint autenticado
+  `PATCH /api/usuarios/{id}/password`, que además exige la clave actual.
+
+> Así se restauró el acceso a `admin@salud.com` en esta instalación: se le puso una clave
+> conocida y se confirmó el login. La clave queda a elección; conviene cambiarla luego desde
+> la app ("Cambiar contraseña").
 
 ## Datos de demostración
 
