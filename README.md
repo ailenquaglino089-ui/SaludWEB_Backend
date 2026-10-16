@@ -118,10 +118,16 @@ latencia real abriendo un canal HTTP y publicando un evento.
 ## Puesta en marcha
 
 ### Requisitos
-- PHP 8.x
+- PHP 8.x (solo el intérprete de línea de comandos; sirve cualquier instalación, incluido el
+  `php.exe` que trae XAMPP: **no** hace falta el panel de XAMPP, ni Apache, ni MySQL).
 - Composer
 - *(Nada más: la base es SQLite, viene con PHP y se crea sola. No hay que instalar ni
   iniciar ningún servidor de base de datos.)*
+
+> **Sin XAMPP y sin MySQL.** La API usa el **servidor nativo de PHP** (`php -S`) y guarda en
+> un **archivo SQLite** dentro del proyecto. No se levanta Apache ni el servicio de MySQL: si
+> tenés XAMPP instalado, alcanza con usar su `php.exe` desde la terminal, sin abrir el panel de
+> control ni iniciar ningún módulo.
 
 ### 1. Clonar el repositorio
 ```bash
@@ -238,9 +244,10 @@ Notas de formato del `.env`:
 
 | Módulo | Rutas principales | Regla |
 |---|---|---|
-| Catálogos | `GET /api/medicos`, `/api/pacientes`, `/api/obras-sociales` | Públicos |
+| Catálogos | `GET /api/medicos`, `/api/obras-sociales` | Públicos (datos no personales) |
+| Pacientes | `GET /api/pacientes`, `GET /api/pacientes/{id}` | **Requieren token** (exponen nombre + DNI); ya no son públicos |
+| Pacientes | `POST/PUT/PATCH /api/pacientes` (protegido); `DELETE` | Crear/editar con token; borrar solo admin |
 | Médicos | `POST/PUT/PATCH/DELETE /api/medicos/{id}` | **Solo admin** (403 si no) |
-| Pacientes | `POST/PUT/PATCH` (protegido); `DELETE` | Crear/editar con token; borrar solo admin |
 | Prescripciones | `GET` (protegido, dato clínico); `POST/PUT/PATCH`; `DELETE`; `PATCH .../estado` | Crear/editar **solo médico**; borrar solo admin; cambiar estado con token |
 | Turnera | `GET /api/especialidades`, `/api/disponibilidades`, `/api/citas/disponibilidad` | Catálogos y disponibilidad públicos |
 | Turnera | `GET /api/citas/agenda`, `/api/citas`, `POST /api/citas`, `POST /api/citas/{id}/cancelar`, `PATCH /api/citas/{id}/estado` | Protegidas; el paciente solo ve sus turnos |
@@ -264,20 +271,23 @@ contraseña y ya podés entrar. La app móvil usa la misma API.
 
 ### Opción por API
 
-`POST /api/auth/registro` es **público** y acepta el rol en el cuerpo:
+`POST /api/auth/registro` es **público** y solo acepta dos roles: `paciente` (por defecto) y
+`medico`. Cualquier otro valor —incluido `admin`— se rechaza con **HTTP 422** y queda anotado
+como `WARN` en el log. Es decir, **no se puede escalar privilegios desde el alta pública**.
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/auth/registro \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@salud.com","password":"tu-clave","nombre":"Admin","tipo_usuario":"admin"}'
+  -d '{"email":"paciente@ejemplo.com","password":"tu-clave","nombre":"Paciente","tipo_usuario":"paciente"}'
 ```
 
 Después iniciá sesión con esas credenciales (`POST /api/auth/login`).
 
-> **Aviso de seguridad (solo demo):** el registro admite `tipo_usuario` con `admin` en la
-> lista blanca, así que cualquiera puede auto-crearse administrador. Es cómodo para una
-> demo, pero **no es apto para producción**: ahí habría que reservar el alta de admins a un
-> usuario ya autenticado (o cargarla por consola). Está anotado como deuda pendiente.
+> **Cómo se crea un administrador.** El alta pública **nunca** crea `admin`. Un administrador
+> se crea de dos maneras: (a) un administrador ya autenticado cambia el rol de una cuenta con
+> `PATCH /api/usuarios/{id}/rol` (solo admin); o (b) por consola durante la puesta a punto.
+> Este comportamiento se corrigió (incidente **INC-004**) y se verifica con
+> `php probar_seguridad.php`.
 
 ## Datos de demostración
 
@@ -312,6 +322,7 @@ php probar_roles_http.php     # idem, contra la API por HTTP (requiere servidor)
 php probar_vinculacion.php    # vinculación de fichas (médicos y pacientes)
 php probar_turnera.php        # turnera completa (requiere API en 127.0.0.1:8000)
 php verificar_turnera.php     # chequeo rápido de salud de la turnera
+php probar_seguridad.php      # regresión de seguridad: 401 sin token en /api/pacientes y 422 al registrar admin
 ```
 
 La del módulo de tiempo real se abre en el navegador, porque la medición de latencia necesita
