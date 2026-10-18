@@ -474,3 +474,6 @@ grep "cid_a1b2c3d4e5f60718" storage/logs/app-$(date +%F).log
 - Los errores de login no dicen que fallo: ni el email ni la contrasena.
 - Todo error de negocio pasa por `Response::error()`, que ya registra y ya agrega el
   `requestId`. Un `echo` con `http_response_code` rompe la correlacion.
+
+## Guía para preparar el sistema para producción y defensa
+- [PREPARAR_SISTEMA_PARA_PRODUCCION_Y_DEFENSA.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/PREPARAR_SISTEMA_PARA_PRODUCCION_Y_DEFENSA.md)
