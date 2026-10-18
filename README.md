@@ -476,4 +476,12 @@ grep "cid_a1b2c3d4e5f60718" storage/logs/app-$(date +%F).log
   `requestId`. Un `echo` con `http_response_code` rompe la correlacion.
 
 ## Guía para preparar el sistema para producción y defensa
+
+Guía práctica, comentada línea por línea, para llevar un proyecto al entorno de producción
+con garantías de calidad y defenderlo con solidez: ambientes (desarrollo, prueba y
+producción), variables de configuración, deploy, CI/CD, backups, README profesional,
+documentación funcional y técnica, y los diagramas necesarios (ER, casos de uso,
+arquitectura y flujo), con una lista de verificación final para la defensa. Está en la raíz
+de los tres repositorios del proyecto (Backend, Web y Mobile):
+
 - [PREPARAR_SISTEMA_PARA_PRODUCCION_Y_DEFENSA.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/PREPARAR_SISTEMA_PARA_PRODUCCION_Y_DEFENSA.md)
