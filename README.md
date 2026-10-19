@@ -560,6 +560,25 @@ Desde cada dispositivo, la app móvil se apunta a `http://<IP-del-servidor>:8000
 - Instalar algo en la PC del usuario final: solo navegador.
 - Licencias de software: PHP y SQLite son libres.
 
+## Base de datos de desarrollo (dónde está guardada)
+
+El proyecto tiene **base de datos propia desde el desarrollo**: no usa MySQL ni
+ningún motor instalado, sino **SQLite**, que guarda todo en un solo archivo.
+
+| Dato | Detalle |
+|---|---|
+| Qué es | Archivo SQLite con el esquema y los datos (usuarios, médicos, obras sociales, turnos, notificaciones, etc.) |
+| Dónde vive | `SaludWEB_Backend/storage/saludweb.sqlite` (relativo a la raíz de este repositorio) |
+| Cómo se crea | Solo, en el **primer request** a la API: `db.php` crea el archivo, las tablas y los datos de ejemplo. No hay que importar ningún SQL. |
+| ¿Se sube a GitHub? | **No.** `storage/` está entero en `.gitignore`, y además los patrones `*.sqlite` protegen el caso de apuntar la base a otra carpeta. Cada clone arranca con una base nueva (sin cuentas: hay que registrarse). |
+| Cómo regenerar los datos de demo | `php sembrar_datos_demo.php` (idempotente: crea o adopta las fichas; **no** crea usuarios ni toca contraseñas) |
+| Cómo moverla de lugar | Variable `DB_DATABASE` en el `.env` (por defecto `storage/saludweb.sqlite`) |
+| Qué más guarda esa carpeta | `storage/secret.key` (secreto de firma de los JWT), `storage/logs/` (logs diarios) y `storage/rate/` (control de intentos) — todo local y tampoco versionado |
+
+> Para respaldar la base de desarrollo alcanza con **copiar el archivo**
+> `saludweb.sqlite`. La frecuencia y el destino de los respaldos en producción
+> están en la guía de producción y defensa (sección de backups).
+
 ## Guía para preparar el sistema para producción y defensa
 
 Guía práctica, comentada línea por línea, para llevar un proyecto al entorno de producción
