@@ -554,6 +554,13 @@ cambios:
 Desde cada dispositivo, la app móvil se apunta a `http://<IP-del-servidor>:8000/api`
 (ver el README de Mobile).
 
+### ¿Y en un celular?
+
+Sí: con el backend escuchando en la red (`0.0.0.0`), la app móvil de SaludWEB se
+conecta desde un celular real con **Expo Go** o desde un emulador Android. El
+paso a paso está en el README de Mobile, sección
+["Cómo usarlo en teléfonos"](https://github.com/ailenquaglino089-ui/SaludWEB_Mobile/blob/main/README.md#cómo-usarlo-en-teléfonos-paso-a-paso).
+
 ### Lo que NO hace falta
 
 - MySQL u otro servidor de bases de datos: la base es un archivo que se crea solo.
