@@ -475,6 +475,91 @@ grep "cid_a1b2c3d4e5f60718" storage/logs/app-$(date +%F).log
 - Todo error de negocio pasa por `Response::error()`, que ya registra y ya agrega el
   `requestId`. Un `echo` con `http_response_code` rompe la correlacion.
 
+## Cómo presentar este proyecto a alguien que no entiende de tecnología
+
+Discurso armado sin jerga, para una demo, una defensa o una charla con alguien del
+rubro salud que no programa. La regla: hablar de problemas y beneficios, nunca de
+tecnologías. Este repositorio es la capa que no se ve: la API que hace que todo
+funcione.
+
+**En una frase:** SaludWEB es un sistema para gestionar turnos médicos en línea, y
+este repositorio es "el cerebro" que guarda la información, aplica las reglas y
+atiende a la web y a la app de celular.
+
+**El problema que resuelve:**
+
+- Turnos tomados por teléfono, en horarios limitados.
+- Agenda en papel o en Excel, con riesgo de turnos dobles y olvidos.
+- El paciente espera sin saber si le quedó el turno.
+
+**Qué gana cada persona:**
+
+| Quién | Qué gana |
+|---|---|
+| Paciente | Reserva su turno las 24 horas desde el celular, sin llamar, y puede ver o cancelar los suyos. |
+| Médico | Ve su agenda del día actualizada sola, sin llamadas ni anotaciones manuales. |
+| Administrador | Controla usuarios, profesionales y turnos desde una sola pantalla, con estadísticas de gestión. |
+
+**Respuestas a las preguntas típicas, en criollo:**
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿Hay que instalar algo? | Para el usuario final, no: entra por el navegador como a cualquier página. La única instalación es una sola vez, en la máquina del consultorio, y este README explica cómo hacerla sin XAMPP ni MySQL. |
+| ¿Es una web o una app? | Las dos. Esta API es la misma que usan la web y la app de celular: se escribe una vez y sirve para las dos ventanas. |
+| ¿Dónde están los datos? | En la propia máquina que hace de servidor, en un archivo de base de datos, sin depender de servicios de terceros. |
+| ¿Es seguro? | El sistema exige usuario y contraseña, valida los permisos en el servidor (nunca confía en lo que manda la pantalla) y registra los errores con un identificador para poder rastrearlos. |
+| ¿Cuánto cuesta? | El software no tiene licencias: está hecho con tecnología libre (PHP y SQLite) y corre en una computadora común. |
+
+**Demo de 3 minutos (guion para mostrarlo en vivo):**
+
+1. Abrir la turnera sin iniciar sesión: es pública y se ve de entrada.
+2. Registrarse como paciente y reservar un turno.
+3. Entrar como administrador y ver el panel: el contador de turnos cambia solo.
+4. Si alguien pregunta "¿y esto dónde vive?", abrir
+   `http://127.0.0.1:8000/api/health` en el navegador: es la forma más simple de
+   ver que el cerebro está despierto.
+
+**Analogía que funciona:** la API es como la caja registradora de un negocio. El
+cliente ve el mostrador (la web y la app), pero quien registra cada movimiento,
+aplica las reglas y guarda la información es la caja. Un mostrador lindo sin caja
+no vende nada.
+
+## ¿Se puede usar en otras computadoras?
+
+**Sí.** Vale la pena distinguir dos situaciones:
+
+### Otra computadora para desarrollo o demostración
+
+Se levanta igual que esta:
+
+1. Clonar este repositorio (o bajar el ZIP desde GitHub).
+2. `composer install` (una sola vez, para las dependencias).
+3. `composer run dev` (queda en `http://127.0.0.1:8000`).
+4. Verificar con `http://127.0.0.1:8000/api/health`.
+
+Requisitos de esa máquina: PHP 8 y Composer. **No hace falta MySQL ni XAMPP**: la
+base de datos es un archivo SQLite que se crea solo en el primer arranque, dentro
+de su propia carpeta `storage/`.
+
+### Que otras computadoras usen el sistema (red local)
+
+Si el backend va a atender a otras PCs o celulares desde una sola máquina, hay dos
+cambios:
+
+1. Escuchar en la red y no solo en la propia máquina:
+   `php -S 0.0.0.0:8000 index.php` (en vez de `127.0.0.1`).
+2. Agregar la dirección de origen en `CORS_ORIGINS` (archivo `.env`), para que el
+   navegador de otra máquina pueda hablar con la API.
+
+Desde cada dispositivo, la app móvil se apunta a `http://<IP-del-servidor>:8000/api`
+(ver el README de Mobile).
+
+### Lo que NO hace falta
+
+- MySQL u otro servidor de bases de datos: la base es un archivo que se crea solo.
+- Instalar algo en la PC del usuario final: solo navegador.
+- Licencias de software: PHP y SQLite son libres.
+
 ## Guía para preparar el sistema para producción y defensa
 
 Guía práctica, comentada línea por línea, para llevar un proyecto al entorno de producción
