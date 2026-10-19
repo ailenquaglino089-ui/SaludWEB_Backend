@@ -396,6 +396,37 @@ abrir una conexión HTTP contra el propio servidor:
 http://127.0.0.1:8000/probar_tiempo_real.php
 ```
 
+## Comandos y verificaciones disponibles
+
+Mapa completo de lo que se puede ejecutar en este repositorio, qué toca cada
+comando y con qué cuidado. Regla general: **los `tests/` y los `verificar_*` no
+escriben nada; los `probar_*` de integración necesitan la API levantada y se
+limpian solos; los `seed_*`, `resetear_*`, `sembrar_*` y `migrar_*` sí escriben
+la base**.
+
+| Comando | Qué hace | Riesgo / requisito |
+|---|---|---|
+| `composer run dev` | Levanta la API con `php -S 127.0.0.1:8000 index.php` | Bloquea la terminal y atiende **una petición por vez**: sirve para todo salvo SSE. No usar en producción. |
+| `composer test` / `php tests/run.php` | Corre las 50 pruebas unitarias (5 clases) | Ninguno: no abre la base ni necesita servidor. |
+| `php -l archivo.php` | Revisa la sintaxis de un archivo | Solo lectura. |
+| `php verificar_turnera.php` | Estado de las tablas de la turnera | Solo lectura. |
+| `php probar_vinculacion.php` | Reglas de vinculación cuenta/ficha | Solo lectura (usa la conexión para construir el servicio). |
+| `php probar_roles.php` | Matriz completa de roles y permisos | Crea una cuenta descartable y la borra; escribe y revierte un rol. |
+| `php probar_roles_http.php` | Roles por HTTP (401/403/409/422) | Requiere la API; crea cuentas descartables y las borra. |
+| `php probar_seguridad.php` | Regresión de INC-001 e INC-004 | Requiere la API; crea un paciente de prueba y lo borra. |
+| `php probar_turnera.php` | Humo de la turnera de punta a punta | Requiere la API; crea usuario, ficha y cita temporales y los borra. |
+| `php probar_tiempo_real.php` | Tabla, autorización y purga de SSE | Por consola omite la latencia; deja eventos en el canal `prueba_script`, que se purgan solos (30 min). |
+| `php listar_usuarios.php` | Lista cuentas sin contraseñas | Solo lectura, pero **no debe desplegarse**: revela qué cuentas existen. |
+| `php resetear_password.php <email> <clave>` | Reemplaza el hash de una clave | **Escribe la base.** Solo desarrollo local (se niega a correr desde el navegador). |
+| `php seed_pacientes.php <N>` | Crea N pacientes aleatorios | **Escribe la base.** Sirve para probar el paginado. |
+| `php sembrar_datos_demo.php` | Carga los datos de demostración | **Escribe la base** (idempotente; no toca usuarios ni claves). |
+| `php migrar_mysql_a_sqlite.php` | Migra desde una base MySQL | **Escribe la base destino**; necesita MySQL accesible. |
+
+Última corrida completa (19/10/2026): **80 archivos PHP sin errores de
+sintaxis**, **50/50 pruebas unitarias** y **todas las suites de integración con
+`EXIT=0`** (turnera, vinculación, roles, seguridad, tiempo real y roles por
+HTTP). Ninguna dejó datos atrás.
+
 ## Documentación del proyecto
 
 - **`GUIA_DE_CODIGO.md`** — el mapa del código, archivo por archivo: qué hace cada uno, con
