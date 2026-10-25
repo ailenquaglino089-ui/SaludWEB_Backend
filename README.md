@@ -646,6 +646,12 @@ Resolución comentada del TP2 (planificación FCFS, SJF, SRTF, Round Robin y pri
 
 - [TRABAJO_PRACTICO_2_E_INTEGRADOR_APLICADO.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/TRABAJO_PRACTICO_2_E_INTEGRADOR_APLICADO.md)
 
+## Matemática discreta y lógica aplicadas al proyecto
+
+Aplicación del material de cátedra de Erika R. Aab (sistemas de numeración, lógica proposicional, conjuntos, relaciones, matrices, grafos y árboles) a SaludWEB: bases y conversiones en colores, permisos y trazabilidad; tablas de verdad y reglas de autorización; conjuntos y SQL; relaciones y claves foráneas; matrices, B-tree y árboles. Incluye las actividades resueltas, las correcciones al material y la trazabilidad `archivo:línea`.
+
+- [MATEMATICA_DISCRETA_Y_LOGICA_APLICADAS.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/MATEMATICA_DISCRETA_Y_LOGICA_APLICADAS.md)
+
 ## Resumen del trabajo documental
 
 En esta etapa se agregaron a la raíz de los tres repositorios y se enlazaron desde este README:
@@ -653,5 +659,6 @@ En esta etapa se agregaron a la raíz de los tres repositorios y se enlazaron de
 - La guía **Documentar y Publicar: El Camino al Éxito del Proyecto**, comentada línea por línea.
 - **Arquitectura y Sistemas Operativos aplicada al proyecto**, con las consignas de la cátedra vinculadas al código y las tablas de planificación corregidas.
 - **Trabajos prácticos 2 e Integrador aplicados**, con el TP2 resuelto (planificación y Algoritmo del Banquero) y las 19 consignas del TP Integrador corregidas y aplicadas.
+- **Matemática discreta y lógica aplicadas**, con los sistemas de numeración, la lógica proposicional, los conjuntos, las relaciones, las matrices, los grafos y los árboles vinculados al código, las actividades resueltas y las correcciones al material.
 
 No se modificó el código de la aplicación: los cambios son de documentación. También se corrigieron los acentos de las secciones nuevas de este README y se dejaron marcados los datos del TP2 que conviene confirmar con la tabla original. El detalle cronológico y los números de publicación están en el [registro de cambios](https://github.com/ailenquaglino089-ui/SaludWEB_Web/blob/main/REGISTRO_DE_CAMBIOS.md).
