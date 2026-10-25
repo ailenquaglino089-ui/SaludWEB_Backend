@@ -628,8 +628,14 @@ de los tres repositorios del proyecto (Backend, Web y Mobile):
 
 - [PREPARAR_SISTEMA_PARA_PRODUCCION_Y_DEFENSA.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/PREPARAR_SISTEMA_PARA_PRODUCCION_Y_DEFENSA.md)
 
-## Documentar y Publicar: El Camino al Exito del Proyecto
+## Documentar y Publicar: El Camino al Éxito del Proyecto
 
-Guia practica comentada linea por linea para documentar, limpiar, preparar y publicar el proyecto con calidad profesional y lista para defensa. Incluye objetivos, revision tecnica, README, manual de instalacion, arquitectura, diagrama de base de datos, preparacion para el deploy, verificacion y publicacion, con el entregable El Paquete.
+Guía práctica comentada línea por línea para documentar, limpiar, preparar y publicar el proyecto con calidad profesional y lista para defensa. Incluye objetivos, revisión técnica, README, manual de instalación, arquitectura, diagrama de base de datos, preparación para el deploy, verificación y publicación, con el entregable El Paquete.
 
 - [DOCUMENTAR_Y_PUBLICAR_EL_CAMINO_AL_EXITO.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/DOCUMENTAR_Y_PUBLICAR_EL_CAMINO_AL_EXITO.md)
+
+## Arquitectura y Sistemas Operativos aplicada al proyecto
+
+Correspondencia entre las consignas del trabajo práctico de Arquitectura y Sistemas Operativos y la implementación real de SaludWEB, con los ejercicios de planificación corregidos y la bibliografía de referencia.
+
+- [ARQUITECTURA_Y_SISTEMAS_OPERATIVOS_APLICADO.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/ARQUITECTURA_Y_SISTEMAS_OPERATIVOS_APLICADO.md)
