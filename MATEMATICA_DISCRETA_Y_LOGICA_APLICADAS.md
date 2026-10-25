@@ -505,9 +505,9 @@ Operaciones:
 
 | Operación | Definición | Ejemplo |
 |---|---|---|
-| Unión | `A ∪ B = {x | x ∈ A ∨ x ∈ B}` | `{1,2} ∪ {2,3} = {1,2,3}` |
-| Intersección | `A ∩ B = {x | x ∈ A ∧ x ∈ B}` | `{1,2} ∩ {2,3} = {2}` |
-| Diferencia | `A − B = {x | x ∈ A ∧ x ∉ B}` | `{1,2} − {2,3} = {1}` |
+| Unión | `A ∪ B = {x : x ∈ A ∨ x ∈ B}` | `{1,2} ∪ {2,3} = {1,2,3}` |
+| Intersección | `A ∩ B = {x : x ∈ A ∧ x ∈ B}` | `{1,2} ∩ {2,3} = {2}` |
+| Diferencia | `A − B = {x : x ∈ A ∧ x ∉ B}` | `{1,2} − {2,3} = {1}` |
 | Complemento | `A^c = U − A` | si `U = {1,2,3}`, `{1}^c = {2,3}` |
 | Diferencia simétrica | `A △ B = (A − B) ∪ (B − A)` | `{1,2} △ {2,3} = {1,3}` |
 
