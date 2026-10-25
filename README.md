@@ -639,3 +639,9 @@ Guía práctica comentada línea por línea para documentar, limpiar, preparar y
 Correspondencia entre las consignas del trabajo práctico de Arquitectura y Sistemas Operativos y la implementación real de SaludWEB, con los ejercicios de planificación corregidos y la bibliografía de referencia.
 
 - [ARQUITECTURA_Y_SISTEMAS_OPERATIVOS_APLICADO.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/ARQUITECTURA_Y_SISTEMAS_OPERATIVOS_APLICADO.md)
+
+## Trabajos prácticos 2 e Integrador aplicados al proyecto
+
+Resolución comentada del TP2 (planificación FCFS, SJF, SRTF, Round Robin y prioridad, y Algoritmo del Banquero) y del TP Integrador (19 consignas de arquitectura, sistemas operativos, memoria, archivos, interrupciones y redes), con la aplicación a SaludWEB y las correcciones para la entrega.
+
+- [TRABAJO_PRACTICO_2_E_INTEGRADOR_APLICADO.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/TRABAJO_PRACTICO_2_E_INTEGRADOR_APLICADO.md)
