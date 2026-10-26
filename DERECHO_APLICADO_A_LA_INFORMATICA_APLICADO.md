@@ -108,6 +108,8 @@ La Argentina es un país federal. La Nación legisla sobre comercio interjurisdi
 
 ## 2. SaludWEB como caso de derecho informático
 
+El derecho informático tiene dos vertientes. La **informática jurídica** usa la tecnología como herramienta del derecho: gestión documental, bases de datos, firma y prueba. El **derecho de la informática** regula las conductas y relaciones que aparecen con la tecnología. SaludWEB usa la primera vertiente porque es un sistema de gestión, y queda alcanzado por la segunda por los datos que trata, la firma de recetas, la responsabilidad y los posibles delitos.
+
 ### 2.1 Qué datos maneja
 
 | Dato | Tabla | Naturaleza |
@@ -339,6 +341,8 @@ SaludWEB no usa IA para decidir tratamientos. Si en el futuro se agregara un tri
 | Representación | Quien firma por la clínica o empresa |
 
 Un sistema informático no es persona: es una herramienta. Las obligaciones recaen en el responsable de la base, el prestador de salud y, según el contrato, el proveedor de software.
+
+En SaludWEB se aplican las reglas de la persona, las obligaciones, los contratos y la responsabilidad civil. No se aplican familia, sucesiones ni derechos reales: el sistema no crea vínculos familiares, no transmite bienes por herencia ni constituye propiedad sobre cosas. Esa delimitación evita trasladar al proyecto instituciones que no tienen relación con su funcionamiento.
 
 ### 5.2 Acto jurídico y documento electrónico
 
@@ -598,6 +602,8 @@ La Ley de Contrato de Trabajo (20.744) protege al trabajador dependiente. Hay re
 
 Un “contrato de locación de servicios” no convierte automáticamente a un empleado en autónomo si en la práctica hay subordinación. La realidad de los hechos prevalece sobre el nombre del contrato.
 
+En un equipo de software la subordinación se manifiesta en tres planos: **jurídica** (dirección, organización y potestad disciplinaria), **económica** (el salario como medio principal de vida) y **técnica** (arquitectura, metodología, repositorios y herramientas definidas por la empresa). El principio protectorio y la irrenunciabilidad de los derechos mínimos impiden que un contrato formal disfrace una relación de dependencia.
+
 ### 9.2 Teletrabajo
 
 La Ley 27.555 regula el teletrabajo. Puntos relevantes:
@@ -608,6 +614,8 @@ La Ley 27.555 regula el teletrabajo. Puntos relevantes:
 - Derecho a la desconexión.
 - Prevención de riesgos.
 - Registro de jornada.
+- Tareas de cuidado: pautas horarias compatibles o pausas pactadas para trabajadores con menores de 13 años o personas dependientes a cargo.
+- Privacidad: el monitoreo debe limitarse a la seguridad de los datos corporativos y no puede invadir correos, archivos personales ni la intimidad del trabajador.
 
 Si SaludWEB se desarrollara con un equipo remoto, habría que definir estos puntos.
 
@@ -631,6 +639,8 @@ Para un equipo real, conviene un contrato de servicios con:
 - Confidencialidad.
 - Facturación.
 - Terminación.
+
+La Ley 27.742 introdujo cambios que inciden en un equipo de software: período de prueba de seis meses, ampliable según el tamaño de la empresa; fondo de cese laboral como alternativa indemnizatoria; regularización de multas por empleo no registrado; y la posibilidad de que un trabajador independiente tenga hasta tres colaboradores sin relación de dependencia. En el sector informático también conviven el CCT 130/75 de Comercio y convenios específicos impulsados por cámaras como CESSI. El encuadre concreto debe verificarse con un profesional antes de contratar.
 
 ### 9.4 Pasantías
 
@@ -1180,8 +1190,8 @@ Este documento se redactó a partir de los archivos de la carpeta `LEGISLACIÓN`
 |---|---|---|
 | `modulo 1 Alumnos` | Concepto de derecho, derecho público y privado, jerarquía normativa, estructura del Estado | Secciones 1, 3, 4 y 12 |
 | `MODULO 2 Alumnos(1)` | Derecho civil y comercial aplicado a la informática | Secciones 5, 7, 10 y 11 |
-| `UNIDAD 2` | Personas, capacidad, atributos, patrimonio y contratos | Secciones 2, 5 y 7 |
-| `UNIDAD 3 ALEN` | Derecho del trabajo, relación de dependencia, teletrabajo, pasantías y propiedad del código | Sección 9 |
+| `UNIDAD 2` | Personas, capacidad, atributos, patrimonio y contratos | Secciones 5.1 a 5.3 y 7 |
+| `UNIDAD 3 ALEN` | Derecho del trabajo, subordinación, principios protectores, teletrabajo, pasantías y propiedad del código | Secciones 9.1 a 9.6 |
 | `UNIDAD N 4 AILEN` y `UNIDAD TEMÁTICA N 5 AILEN` | Derecho informático, aspectos constitucionales, civiles y penales; firma, prueba digital y ciberdelitos; propiedad intelectual, licencias, marcas, comercio electrónico e intermediarios | Secciones 2, 4, 6, 8, 10, 11, 12 y 13 |
 
 **Parciales, trabajos prácticos y material de repaso:**
@@ -1192,8 +1202,10 @@ Este documento se redactó a partir de los archivos de la carpeta `LEGISLACIÓN`
 | `TRABAJO AULICO UNIDAD 4` | Casos de libertad de expresión, medidas cautelares, intermediarios y habeas data | Secciones 14.4 a 14.6 |
 | `PREGUNTAS Y RESPUESTAS, CASO 3` | Inteligencia artificial en el empleo público y constitucionalización del derecho privado | Sección 14.2 |
 | `PREGUNTAS Y RESPUESTAS, CASO 4` | Competencias nacionales y provinciales en ciberdelitos | Sección 14.3 |
-| `Clase 25 de septiembre Ailen` | Teletrabajo: equipamiento, gastos, desconexión digital, tareas de cuidado y privacidad | Sección 9.2 |
+| `Clase 25 de septiembre Ailen` | Teletrabajo: equipamiento, gastos, desconexión digital, tareas de cuidado, privacidad y reforma laboral de la Ley 27.742 | Secciones 9.2 y 9.3 |
 | `Actividad Práctica Grupo 1 Clase 28 de agosto` | Caso CloudNet: nube, clickwrap, firma electrónica, responsabilidad y ciberseguridad | Sección 14.1 |
 | `Repaso_Ailen_QuaglinoFail` | Repaso integrador del Módulo 1 y de la jerarquía normativa | Secciones 1, 3, 4, 17 y 19.3 |
 
 `ASISTENCIA Y CRITERIOS DE EVALUACIÓN` es material administrativo y no aporta contenido jurídico. `modulo 1 Alumnos (1).pdf` es el duplicado en PDF del Módulo 1 y no se cita por separado. El documento `DERECHO_APLICADO_A_LA_INFORMATICA_APLICADO.md` es la síntesis aplicada; no reemplaza la lectura de los archivos originales.
+
+De la Unidad 2 se aplicaron personas, obligaciones, contratos y responsabilidad civil. Familia, sucesiones y derechos reales no se desarrollan porque SaludWEB no regula vínculos familiares, no transmite bienes por herencia ni constituye derechos sobre cosas. No es un archivo faltante: es un tema que no tiene incidencia en el proyecto.
