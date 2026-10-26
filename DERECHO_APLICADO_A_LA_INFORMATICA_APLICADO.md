@@ -1171,3 +1171,29 @@ La enseñanza central de Derecho Aplicado a la Informática es que **el software
 6. Nissen, R. (2019). *Derecho informático*. Thomson Reuters.
 7. Organización de los Estados Americanos. (2004). *Ley Modelo Interamericana sobre Protección de Datos Personales*.
 8. Agencia de Acceso a la Información Pública. (2020). *Guías y resoluciones sobre protección de datos personales*.
+
+### 19.5 Material de cátedra aplicado
+
+Este documento se redactó a partir de los archivos de la carpeta `LEGISLACIÓN`. La aplicación no consiste en copiar el material: cada archivo se usó para fundamentar una parte del análisis de SaludWEB. Los archivos fuente no se duplican en el repositorio; la aplicación queda trazada en las secciones de este documento.
+
+| Archivo de cátedra | Aporte principal | Dónde se aplica |
+|---|---|---|
+| `modulo 1 Alumnos` | Concepto de derecho, derecho público y privado, jerarquía normativa, estructura del Estado | Secciones 1, 3, 4 y 12 |
+| `MODULO 2 Alumnos(1)` | Derecho civil y comercial aplicado a la informática | Secciones 5, 7, 10 y 11 |
+| `UNIDAD 2` | Personas, capacidad, atributos, patrimonio y contratos | Secciones 2, 5 y 7 |
+| `UNIDAD 3 ALEN` | Derecho del trabajo, relación de dependencia, teletrabajo, pasantías y propiedad del código | Sección 9 |
+| `UNIDAD N 4 AILEN` y `UNIDAD TEMÁTICA N 5 AILEN` | Derecho informático, aspectos constitucionales, civiles y penales; firma, prueba digital y ciberdelitos; propiedad intelectual, licencias, marcas, comercio electrónico e intermediarios | Secciones 2, 4, 6, 8, 10, 11, 12 y 13 |
+
+**Parciales, trabajos prácticos y material de repaso:**
+
+| Archivo | Aporte principal | Dónde se aplica |
+|---|---|---|
+| `EXAMEN CONCEPTUAL UNIDAD 4` | Autoevaluación de conceptos de derecho informático | Sección 17 |
+| `TRABAJO AULICO UNIDAD 4` | Casos de libertad de expresión, medidas cautelares, intermediarios y habeas data | Secciones 14.4 a 14.6 |
+| `PREGUNTAS Y RESPUESTAS, CASO 3` | Inteligencia artificial en el empleo público y constitucionalización del derecho privado | Sección 14.2 |
+| `PREGUNTAS Y RESPUESTAS, CASO 4` | Competencias nacionales y provinciales en ciberdelitos | Sección 14.3 |
+| `Clase 25 de septiembre Ailen` | Teletrabajo: equipamiento, gastos, desconexión digital, tareas de cuidado y privacidad | Sección 9.2 |
+| `Actividad Práctica Grupo 1 Clase 28 de agosto` | Caso CloudNet: nube, clickwrap, firma electrónica, responsabilidad y ciberseguridad | Sección 14.1 |
+| `Repaso_Ailen_QuaglinoFail` | Repaso integrador del Módulo 1 y de la jerarquía normativa | Secciones 1, 3, 4, 17 y 19.3 |
+
+`ASISTENCIA Y CRITERIOS DE EVALUACIÓN` es material administrativo y no aporta contenido jurídico. `modulo 1 Alumnos (1).pdf` es el duplicado en PDF del Módulo 1 y no se cita por separado. El documento `DERECHO_APLICADO_A_LA_INFORMATICA_APLICADO.md` es la síntesis aplicada; no reemplaza la lectura de los archivos originales.
