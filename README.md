@@ -694,6 +694,23 @@ Aplicación de Derecho Aplicado a la Informática a SaludWEB: derecho público y
 
 La sección **19.5** del documento deja la trazabilidad del material de cátedra: qué aportó cada archivo de la carpeta `LEGISLACIÓN`, los cinco grupos de contenido, los parciales, los trabajos prácticos y el repaso. También aclara que el PDF del Módulo 1 es un duplicado y que el archivo de asistencia es administrativo. Los archivos fuente no se copiaron al repositorio; la aplicación queda en el documento publicado.
 
+| Archivo o grupo | Aplicación en SaludWEB | Secciones |
+|---|---|---|
+| Módulo 1 | Derecho público y privado, jerarquía normativa y estructura del Estado | 1, 3, 4 y 12 |
+| Módulo 2 | Derecho civil y comercial aplicado a la informática | 5, 7, 10 y 11 |
+| Unidad 2 | Personas, capacidad, obligaciones, contratos y responsabilidad; familia, sucesiones y derechos reales fuera de alcance | 5.1 a 5.3 y 7 |
+| Unidad 3 | Subordinación, principios protectores, teletrabajo, pasantías y propiedad del código | 9.1 a 9.6 |
+| Unidades 4 y 5 | Derecho informático, firma, prueba, ciberdelitos, propiedad intelectual, licencias, marcas, comercio electrónico e intermediarios | 2, 4, 6, 8, 10, 11, 12 y 13 |
+| Examen conceptual Unidad 4 | Autoevaluación de conceptos | 17 |
+| Trabajo áulico Unidad 4 | Libertad de expresión, medidas cautelares, intermediarios y habeas data | 14.4 a 14.6 |
+| Caso 3 | IA en el empleo público | 14.2 |
+| Caso 4 | Competencias nacionales y provinciales en ciberdelitos | 14.3 |
+| Clase 25/09 | Tareas de cuidado, privacidad y reforma laboral Ley 27.742 | 9.2 y 9.3 |
+| Actividad CloudNet | Nube, clickwrap, firma electrónica, responsabilidad y ciberseguridad | 14.1 |
+| Repaso | Repaso integrador del Módulo 1 y jerarquía normativa | 1, 3, 4, 17 y 19.3 |
+
+`ASISTENCIA Y CRITERIOS DE EVALUACIÓN` es material administrativo y no aporta contenido jurídico. `modulo 1 Alumnos (1).pdf` es el duplicado del Módulo 1.
+
 - [DERECHO_APLICADO_A_LA_INFORMATICA_APLICADO.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/DERECHO_APLICADO_A_LA_INFORMATICA_APLICADO.md)
 
 ## Cómo defender un proyecto profesional aplicado al proyecto
