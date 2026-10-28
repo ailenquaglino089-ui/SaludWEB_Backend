@@ -719,6 +719,12 @@ Guía para preparar la defensa oral de SaludWEB: qué evalúa un tribunal, cómo
 
 - [COMO_DEFENDER_UN_PROYECTO_PROFESIONAL_APLICADO.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/COMO_DEFENDER_UN_PROYECTO_PROFESIONAL_APLICADO.md)
 
+## Simulación de Defensa Final
+
+Guía de ensayo comentada línea por línea para llegar a la defensa con un recorrido probado: tres rondas de práctica, guion cronometrado de 12 minutos, transiciones memorizables, demo por roles, plan B, cuatro fragmentos de código explicados línea por línea, resultados verificados, límites declarados, preguntas técnicas y metodológicas, video de respaldo y checklist final. Se apoya en la evidencia del repositorio y no inventa métricas: distingue lo medido, lo propuesto y la deuda pendiente. Está en la raíz de los tres repositorios:
+
+- [SIMULACION_DE_DEFENSA_FINAL.md](https://github.com/ailenquaglino089-ui/SaludWEB_Backend/blob/main/SIMULACION_DE_DEFENSA_FINAL.md)
+
 ## Resumen del trabajo documental
 
 En esta etapa se agregaron a la raíz de los tres repositorios y se enlazaron desde este README:
@@ -735,5 +741,6 @@ En esta etapa se agregaron a la raíz de los tres repositorios y se enlazaron de
 - **Gestión de Desarrollo de Software aplicada**, con planificación, riesgos, calidad y la auditoría del tablero de reportes e indicadores.
 - **Derecho Aplicado a la Informática aplicado**, con protección de datos de salud, consentimiento, firma, responsabilidad, prueba digital, propiedad intelectual, ciberdelitos y matriz de cumplimiento.
 - **Cómo defender un proyecto profesional aplicado**, con el guion de 10 minutos, las preguntas difíciles, la matriz de evidencia, el plan B de la demo y la deuda técnica declarada.
+- **Simulación de Defensa Final**, con tres rondas de ensayo, guion cronometrado, demo por roles, código explicado línea por línea, preguntas frecuentes y checklist de presentación.
 
 No se modificó el código de la aplicación: los cambios son de documentación. También se corrigieron los acentos de las secciones nuevas de este README y se dejaron marcados los datos del TP2 que conviene confirmar con la tabla original. El detalle cronológico y los números de publicación están en el [registro de cambios](https://github.com/ailenquaglino089-ui/SaludWEB_Web/blob/main/REGISTRO_DE_CAMBIOS.md).
