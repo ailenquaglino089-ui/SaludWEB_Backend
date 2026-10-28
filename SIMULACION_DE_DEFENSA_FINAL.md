@@ -30,22 +30,24 @@ improvisa. La palabra "estructurada" es la que ordena todo el documento.
 **Presentado por:** Ailen Adriana Quaglino Fail<br>
 **Candidata a titulación:** Tecnicatura en Programación<br>
 **Institución:** UTN Facultad Regional Paraná<br>
-**Asesor/a responsable:** [completar]<br>
-**Departamento:** [completar]<br>
-**Fecha de defensa:** [completar]
+**Documento:** Simulación de Defensa Final
 
 <!--
-Los datos personales y académicos salen de los documentos del proyecto. El
-asesor, el departamento y la fecha quedan como campos a completar porque no
-surgen del repositorio y no corresponde inventarlos.
+Los datos personales y académicos que surgen del proyecto están en la carátula.
+El asesor, el departamento y la fecha de defensa no se inventan: se completan
+en la carátula oficial de la cátedra.
 -->
 
+> **Datos administrativos:** el asesor, el departamento y la fecha de defensa
+> se completan en la carátula oficial. Este documento no los inventa porque no
+> surgen del repositorio.
+>
 > **Uso:** documento de simulación y ensayo. No es una entrega oficial ni un
 > reemplazo del reglamento de la carrera.
 
 <!--
-Esta aclaración evita que el documento se confunda con un formulario oficial.
-También deja claro que los datos que faltan se completan fuera del repositorio.
+Esta aclaración separa el documento de ensayo de la carátula oficial y evita
+que el lector busque datos que dependen de la cátedra, no del repositorio.
 -->
 
 ---
