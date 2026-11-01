@@ -627,6 +627,31 @@ móvil se apunta a `http://<IP-del-servidor>:8000/api` (ver el README de Mobile)
 > la PC debe permanecer encendida, en Internet y con los servicios activos. No abras el
 > puerto 8000 directamente al router ni publiques una API sin HTTPS y configuración de
 > producción. Para usar datos móviles u otra Wi‑Fi, abrí el enlace público de Web.
+>
+> **Qué ocurre al usar el enlace público:** el lanzador de Web inicia este Backend en
+> `0.0.0.0:8000`, pero Funnel no publica directamente ese puerto. Publica HTTPS en el
+> puerto local `127.0.0.1:8001`; el router `SaludWEB_Web/scripts/servidor_publico.php`
+> reconoce las rutas `/api/...` y carga el front controller de este repositorio (`index.php`).
+> Así el teléfono usa la misma dirección HTTPS para descargar la web y llamar a la API:
+> no necesita conocer la IP de la PC, instalar Tailscale ni solicitar CORS entre dominios.
+> Las rutas y reglas de autorización siguen siendo las de esta API; las rutas protegidas
+> requieren JWT y validan el rol en el servidor. El enlace público puede alcanzar las rutas
+> sin autenticación que ofrece la aplicación, por lo que este modo es para demostraciones,
+> no para publicar datos reales ni reemplazar un despliegue de producción.
+
+El recorrido de una llamada desde el teléfono es:
+
+1. El navegador abre la web por el dominio HTTPS de Tailscale Funnel.
+2. Funnel reenvía la solicitud al gateway PHP local en `127.0.0.1:8001`; la conexión
+   externa termina con HTTPS y el puerto del Backend no se publica al router de Internet.
+3. Si la ruta empieza por `/api/`, `servidor_publico.php` incluye `SaludWEB_Backend/index.php`.
+4. `index.php` carga `routes.php`, que despacha el endpoint REST y aplica CORS, autenticación
+   JWT y permisos según corresponda.
+5. Si la ruta no es de la API, el gateway devuelve un archivo estático de `dist/` o el
+   `index.html` de la SPA para que React resuelva rutas como `/login`.
+
+El lanzador, el gateway y el apagado están explicados paso a paso en
+[`SaludWEB_Web/README.md`](https://github.com/ailenquaglino089-ui/SaludWEB_Web#cómo-abrir-todo-el-proyecto-backend--frontend).
 
 ### ¿Y en un celular?
 
