@@ -296,11 +296,14 @@ su ficha, pero **no sirve como credencial de acceso**.
 
 #### Recorrido de registro e inicio de sesión
 
-1. El formulario web o móvil envía nombre, email y contraseña a `POST /api/auth/registro`.
-   El alta pública crea pacientes o médicos; nunca permite elegir el rol administrador.
+1. Cada persona puede crear su propia cuenta desde el formulario web o móvil; no necesita
+   que la administradora la dé de alta. El cliente envía nombre, email y contraseña a
+   `POST /api/auth/registro`. El alta pública crea cuentas normales de paciente o médico;
+   nunca permite elegir el rol administrador ni reemplaza la cuenta de administración.
 2. `core/Validador.php` normaliza el email y valida que la contraseña no esté vacía y no
-   supere los 72 bytes que admite bcrypt. Cada usuario elige su clave; no hay una clave
-   universal ni se acepta cualquier clave al iniciar sesión.
+   supere los 72 bytes que admite bcrypt. Cada usuario elige su propia clave al registrarse;
+   en los siguientes accesos tiene que usar esa misma clave. No hay una clave universal ni
+   se acepta cualquier clave al iniciar sesión.
 3. `services/AuthService.php` consulta que el email no exista, genera el hash con
    `password_hash(..., PASSWORD_BCRYPT)` y guarda el hash, no la contraseña original.
 4. `POST /api/auth/login` vuelve a normalizar el email, busca una cuenta activa y compara
