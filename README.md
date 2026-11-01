@@ -13,14 +13,17 @@ la app móvil consumen esta misma API).
   *solo-admin* (403 si el rol no corresponde).
 - **Módulo de roles y permisos**: las cuentas tienen rol `admin | medico | paciente` y el
   backend valida cada operación, nunca el frontend.
+- **Acceso de cada cuenta**: email + contraseña elegida al registrarse; las contraseñas
+  se guardan como hash bcrypt y nunca se pueden recuperar en texto plano.
 - **Vinculación de cuentas con fichas** (turnera): al loguearse, el usuario debe quedar
   vinculado a una ficha — el **médico** con su **matrícula** y el **paciente** con su **DNI** —
   para saber *a quién* se le asigna cada turno.
 - **Turnera (sistema de gestión de citas online)**: especialidades, disponibilidades,
   reserva/cancelación de turnos, agenda, notificaciones con token y estadísticas de gestión.
-- **Tiempo real con Server-Sent Events (SSE)**: cuando cambia un turno, el servidor empuja el
-  aviso al canal correspondiente y el panel se actualiza solo, sin polling. La documentación
-  completa está en **[`GUIA_TIEMPO_REAL.md`](GUIA_TIEMPO_REAL.md)**.
+- **Avisos de tiempo real con Server-Sent Events (SSE)**: cuando cambia un turno, el servidor
+  puede empujar un aviso por canal. La Web usa sondeo cada 15 segundos por defecto con el
+  servidor PHP integrado de un solo worker; SSE se habilita en despliegues multi-worker. La
+  documentación completa está en **[`GUIA_TIEMPO_REAL.md`](GUIA_TIEMPO_REAL.md)**.
 - **SSO** con Google / Microsoft (PKCE, sin secret en el cliente).
 
 ## Contenido
@@ -250,7 +253,7 @@ en un servidor se pueden definir del panel o del servicio sin tocar el archivo.
 | `DB_DATABASE` | `storage/saludweb.sqlite` | Ruta del archivo de la base (relativa a la raíz del backend). El archivo y su carpeta se crean solos en el primer request. |
 | `JWT_SECRET` | generado en `storage/secret.key` | Secreto de firma de los JWT. Cambiarlo invalida los tokens vigentes. |
 | `JWT_TTL` | `3600` | Vigencia del access token, en segundos. Valores `<= 0` se ignoran. |
-| `CORS_ORIGINS` | `http://localhost:5173,...` | Orígenes permitidos para el navegador, sin espacios. |
+| `CORS_ORIGINS` | `http://localhost:5173,...` | Orígenes permitidos para el navegador, sin espacios. Además se aceptan automáticamente orígenes de loopback y de IPv4 privadas (`10.x`, `172.16-31.x`, `192.168.x`), para que la web funcione desde el celular en la red local sin fijar la IP. |
 | `LOG_LEVEL` | `DEBUG` en dev / `INFO` en prod | Nivel mínimo de log: `DEBUG`, `INFO`, `WARN`, `ERROR`. |
 | `LOG_DIR` | `storage/logs` | Carpeta de logs (un JSON por línea, un archivo por día). |
 | `LOG_SERVICE` | `saludweb-api` | Nombre del emisor en cada línea de log. |
@@ -272,6 +275,7 @@ Notas de formato del `.env`:
 ## Autenticación y SSO
 
 1. `POST /api/auth/login` con `{ "email": "...", "password": "..." }` → devuelve un JWT.
+   El ingreso es siempre con email y la contraseña que eligió la persona.
 2. Enviarlo en cada petición protegida: `Authorization: Bearer <jwt>`.
 3. El secreto se toma de `JWT_SECRET` o se genera en `storage/secret.key`.
 4. `POST /api/auth/sso` con `{ "provider": "google" | "microsoft", "id_token": "..." }`
@@ -281,6 +285,33 @@ Notas de formato del `.env`:
 5. `POST /api/auth/vincular` con `{ "tipo": "medico", "documento": "<matrícula>" }` o
    `{ "tipo": "paciente", "documento": "<DNI>" }` → vincula la cuenta con su ficha.
    Sin ficha vinculada, el usuario no puede reservar turnos.
+
+### Email y contraseña
+
+El login no acepta DNI. Cada persona entra únicamente con su **email** y la **contraseña**
+que eligió al registrarse o al cambiarla desde su cuenta.
+
+El DNI se sigue usando en `POST /api/auth/vincular` para asociar una cuenta de paciente con
+su ficha, pero **no sirve como credencial de acceso**.
+
+#### Recorrido de registro e inicio de sesión
+
+1. El formulario web o móvil envía nombre, email y contraseña a `POST /api/auth/registro`.
+   El alta pública crea pacientes o médicos; nunca permite elegir el rol administrador.
+2. `core/Validador.php` normaliza el email y valida que la contraseña no esté vacía y no
+   supere los 72 bytes que admite bcrypt. Cada usuario elige su clave; no hay una clave
+   universal ni se acepta cualquier clave al iniciar sesión.
+3. `services/AuthService.php` consulta que el email no exista, genera el hash con
+   `password_hash(..., PASSWORD_BCRYPT)` y guarda el hash, no la contraseña original.
+4. `POST /api/auth/login` vuelve a normalizar el email, busca una cuenta activa y compara
+   la clave ingresada con el hash usando `password_verify()`. Si coincide, devuelve un JWT;
+   si no, responde con un error genérico de credenciales.
+5. La interfaz incluye mostrar/ocultar para evitar errores de tipeo en teléfono o PC. Ese
+   botón solo cambia la visibilidad del texto que se está escribiendo; no revela el hash ni
+   permite leer contraseñas guardadas.
+6. Para crear una cuenta con Google como proveedor de identidad se requiere configurar
+   Google OAuth. Escribir una dirección `@gmail.com` en el registro normal no verifica que
+   pertenezca a Google.
 
 ## Módulos y reglas de negocio
 
@@ -574,22 +605,34 @@ de su propia carpeta `storage/`.
 
 ### Que otras computadoras usen el sistema (red local)
 
-Si el backend va a atender a otras PCs o celulares desde una sola máquina, hay dos
-cambios:
+Si el backend va a atender a otras PCs o celulares desde una sola máquina:
 
 1. Escuchar en la red y no solo en la propia máquina:
-   `php -S 0.0.0.0:8000 index.php` (en vez de `127.0.0.1`).
-2. Agregar la dirección de origen en `CORS_ORIGINS` (archivo `.env`), para que el
-   navegador de otra máquina pueda hablar con la API.
+   `php -S 0.0.0.0:8000 index.php` (el script `composer run dev` ya lo hace).
+2. Abrir los puertos en el firewall **solo para la subred local**:
+   `SaludWEB_Mobile\scripts\permitir_firewall_saludweb.bat` como administrador.
+3. No hace falta agregar la IP a `CORS_ORIGINS`: la API acepta automáticamente
+   orígenes de loopback y de rangos IPv4 privados, así que sigue funcionando
+   aunque la WiFi cambie la IP de la PC.
 
-Desde cada dispositivo, la app móvil se apunta a `http://<IP-del-servidor>:8000/api`
-(ver el README de Mobile).
+Desde cada dispositivo, la web se abre en `http://<IP-del-servidor>:5173` y la app
+móvil se apunta a `http://<IP-del-servidor>:8000/api` (ver el README de Mobile).
+
+> **Acceso desde otras redes:** las direcciones `192.168.x.x` y otros rangos privados
+> solo funcionan dentro de la misma red. En este workspace, el acceso público del frontend
+> está documentado en el README de Web y utiliza el enlace de Tailscale configurado allí;
+> la PC debe permanecer encendida, en Internet y con los servicios activos. No abras el
+> puerto 8000 directamente al router ni publiques una API sin HTTPS y configuración de
+> producción. Para usar datos móviles u otra Wi‑Fi, abrí el enlace público de Web.
 
 ### ¿Y en un celular?
 
 Sí: con el backend escuchando en la red (`0.0.0.0`), la app móvil de SaludWEB se
-conecta desde un celular real con **Expo Go** o desde un emulador Android. El
-paso a paso está en el README de Mobile, sección
+conecta desde cualquier celular **Android o iPhone**, sin importar la marca
+(Redmi, Motorola, Samsung, etc.), con **Expo Go** o con un build instalable,
+además de un emulador Android o el simulador de iOS. En iPhone, verificá que
+Expo Go sea compatible con el SDK 53; si no, usá un development build con EAS o
+actualizá el SDK. El paso a paso está en el README de Mobile, sección
 ["Cómo usarlo en teléfonos"](https://github.com/ailenquaglino089-ui/SaludWEB_Mobile/blob/main/README.md#cómo-usarlo-en-teléfonos-paso-a-paso).
 
 ### Lo que NO hace falta
