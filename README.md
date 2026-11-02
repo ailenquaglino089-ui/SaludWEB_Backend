@@ -511,6 +511,26 @@ El alta respetaba el checkbox en el frontend, pero el backend lo pisaba con
   se borraron con `DELETE`. El E2E de la web confirmó lo mismo desde la UI:
   `MEDICO_ALTA_INACTIVO_OK` y `PACIENTE_ALTA_INACTIVO_OK`.
 
+## Publicar cambios en GitHub (paso a paso)
+
+Este repositorio se publica en
+`https://github.com/ailenquaglino089-ui/SaludWEB_Backend.git`, rama
+`docs/access-connectivity`. Desde la carpeta `SaludWEB_Backend`:
+
+```bash
+git status                         # 1. Ver qué archivos cambiaron
+git diff                           # 2. Revisar el contenido antes de subirlo
+git add README.md services/MedicoService.php services/PacienteService.php
+git commit -m "fix: respetar estado activo en altas de medicos y pacientes"
+git push origin docs/access-connectivity
+git log --oneline -1               # 6. Confirmar el commit publicado
+git status -sb                     # 7. Debe quedar sin cambios pendientes
+```
+
+Antes de publicar, ejecutar `php tests/run.php` y las suites de integración que
+correspondan. No subir `storage/saludweb.sqlite`, `vendor/` ni archivos `.env`
+con credenciales; la base local y los secretos están en `.gitignore`.
+
 ## Pruebas
 
 Las suites están comentadas línea por línea y no tocan la base (crean sus propios datos y
