@@ -432,6 +432,85 @@ El script es **idempotente**: crea o adopta fichas según matrícula/DNI y vincu
 cuentas existentes. **No crea usuarios ni toca contraseñas**, así que las cuentas deben
 existir de antes.
 
+### Qué hace `sembrar_datos_demo.php`, línea por línea
+
+El script se ejecutó completo sobre la base de desarrollo para cerrar la
+iteración de usuarios y fichas. Su comportamiento, en orden, es este:
+
+1. **Casting de las cuentas de demostración**: recorre la lista fija de emails y,
+   para cada uno, actualiza nombre, email y rol. No crea cuentas nuevas: si el
+   email no existe, lo informa y sigue.
+2. **Fichas de médico**: para cada cuenta con rol `medico`, busca una ficha por
+   matrícula; si no existe la crea, y si existe la adopta. Asegura nombre,
+   matrícula y especialidad, y guarda el `id_medico` en `usuarios`.
+3. **Fichas de paciente**: hace lo mismo con DNI, nombre y obra social, y guarda
+   el `id_paciente` en `usuarios`.
+4. **Corrección de vínculos**: si una cuenta tenía un `id_medico` o
+   `id_paciente` que no correspondía, lo reemplaza por el correcto.
+5. **Fichas sin uso**: apaga (no borra) las fichas que quedaron huérfanas o que
+   tienen nombre de médico en la tabla de pacientes.
+6. **Resumen final**: muestra las cuentas, sus fichas y la cantidad de
+   administradores activos.
+7. **Contraseñas**: no las lee, no las muestra y no las modifica. Se verificó
+   explícitamente con el mensaje final `contraseñas: NO se tocó ninguna`.
+
+Resultado concreto de la corrida del 01/11/2026:
+
+- `alonso.tramposo@saludweb.com` (id `2`) pasó de `rol = paciente` a
+  `rol = medico` y quedó vinculado a la ficha `#10`.
+- La ficha `pacientes #324` ("Dr. Alonso Tramposo") quedó **apagada**.
+- Quedaron **10 cuentas** de demostración: **1 admin**, **4 médicos** y
+  **5 pacientes**, todas activas y con ficha cuando corresponde.
+- No se borró ningún usuario y no se modificó ninguna contraseña.
+
+### Reglas de usuarios que se verificaron
+
+- `GET /api/usuarios` devuelve
+  `id, email, nombre, rol, id_paciente, id_medico, activo, creado_at, vinculado, nota_vinculacion`.
+- `PATCH /api/usuarios/{id}/rol` solo acepta `paciente`, `medico` o `admin`.
+  Un rol desconocido responde **422**.
+- Degradar al **último administrador** o **a uno mismo** responde **409**, no
+  403: el permiso existe, lo que no se puede es dejar el sistema sin admin.
+- Un usuario inexistente responde **404**.
+- `AuthService::registro` se revisó y está correcto: inserta las 7 columnas
+  `email, password, nombre, tipo_usuario, id_paciente, id_medico, activo` con
+  placeholders y `1` para `activo`, y recibe los 6 valores correspondientes
+  (incluidos los `null` de las fichas).
+
+### Estados activo/inactivo de médicos y pacientes
+
+El alta respetaba el checkbox en el frontend, pero el backend lo pisaba con
+`activo = 1`. Por eso un médico creado como inactivo aparecía activo.
+
+- **`services/MedicoService.php` líneas 161-176** - `crear()` calcula
+  `$activo` con `filter_var($data['activo'], FILTER_VALIDATE_BOOLEAN)` cuando
+  la clave viene en el body y usa `1` solo si no viene. El valor se pasa al
+  repositorio, que ya insertaba la columna `activo`.
+- **`services/MedicoService.php` líneas 217-221** - `actualizar()` usa el mismo
+  `filter_var` en lugar de `$data['activo'] ? 1 : 0`. La diferencia importa:
+  la cadena `"false"` ahora se guarda como `0`; con un cast booleano se habría
+  interpretado como activa.
+- **`services/PacienteService.php` líneas 145-159 y 217-221** - Se aplicó el
+  mismo criterio en el alta y en la edición de pacientes.
+- **`persistence/MedicoRepository.php` y `persistence/PacienteRepository.php`** -
+  No hicieron falta cambios: el `INSERT` ya incluía `activo` y el `UPDATE`
+  dinámico ya lo tomaba cuando estaba presente.
+
+### Verificación ejecutada
+
+- `php tests/run.php`: **50/50** pruebas OK (correlación, JWT, logger,
+  rate limiter y validador).
+- `php probar_roles.php`: matriz completa de roles OK, incluida la escritura real
+  con una cuenta descartable que se crea y se borra al final.
+- `php probar_vinculacion.php`: **15/15** casos OK, tanto los que deben aceptar
+  la vinculación como los que deben rechazarla.
+- `php sembrar_datos_demo.php`: corrida completa sin errores y sin tocar
+  contraseñas.
+- Prueba HTTP directa (`POST /api/medicos` y `POST /api/pacientes` con
+  `"activo": false`): ambos respondieron `activo = 0` y los registros de prueba
+  se borraron con `DELETE`. El E2E de la web confirmó lo mismo desde la UI:
+  `MEDICO_ALTA_INACTIVO_OK` y `PACIENTE_ALTA_INACTIVO_OK`.
+
 ## Pruebas
 
 Las suites están comentadas línea por línea y no tocan la base (crean sus propios datos y
@@ -650,6 +729,7 @@ móvil se apunta a `http://<IP-del-servidor>:8000/api` (ver el README de Mobile)
 > la PC debe permanecer encendida, en Internet y con los servicios activos. No abras el
 > puerto 8000 directamente al router ni publiques una API sin HTTPS y configuración de
 > producción. Para usar datos móviles u otra Wi‑Fi, abrí el enlace público de Web.
+opencode --continue
 >
 > **Qué ocurre al usar el enlace público:** el lanzador de Web inicia este Backend en
 > `0.0.0.0:8000`, pero Funnel no publica directamente ese puerto. Publica HTTPS en el

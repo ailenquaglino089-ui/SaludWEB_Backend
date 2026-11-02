@@ -158,13 +158,22 @@ class MedicoService
             'La especialidad no puede superar los 100 caracteres'
         );
 
+        // Estado: si el cliente envía "activo" se respeta ese valor; si no
+        // viene, el alta queda activa. filter_var entiende true/false, 1/0 y
+        // también las cadenas "true"/"false", que es lo que puede llegar por
+        // JSON o por un formulario HTML. Antes estaba fijo en 1 y por eso un
+        // médico creado como inactivo terminaba guardado como activo.
+        $activo = isset($data['activo'])
+            ? (int) filter_var($data['activo'], FILTER_VALIDATE_BOOLEAN)
+            : 1;
+
         // Inserta el médico llamando al repositorio
         // Llama al repositorio con los campos ya sanitizados y validados
         $id = $this->repo->crear([
             'nombre' => $nombre,
             'matricula' => $matricula,
             'especialidad' => $especialidad,
-            'activo' => 1,  // Por defecto el médico se crea ACTIVO
+            'activo' => $activo,
         ]);
 
         // Devuelve el médico recién creado (con todos sus datos)
@@ -205,11 +214,11 @@ class MedicoService
         if (isset($data['especialidad'])) {
             $limpios['especialidad'] = trim($data['especialidad']);
         }
-        // Si viene "activo", se normaliza su valor
+        // Si viene "activo", se normaliza su valor. filter_var es más estricto
+        // que un cast booleano: la cadena "false" también se guarda como 0,
+        // mientras que con (bool) se habría interpretado como 1 (activo).
         if (isset($data['activo'])) {
-            // Operador ternario: condición ? valor_si_true : valor_si_false
-            // Convierte cualquier valor a 1 o 0 (booleano a entero)
-            $limpios['activo'] = $data['activo'] ? 1 : 0;
+            $limpios['activo'] = (int) filter_var($data['activo'], FILTER_VALIDATE_BOOLEAN);
         }
 
         // Si después de filtrar no quedó ningún campo, lanza error

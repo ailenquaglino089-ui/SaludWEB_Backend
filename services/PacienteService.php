@@ -142,13 +142,21 @@ class PacienteService
             }
         }
 
+        // Estado: si el cliente envía "activo" se respeta ese valor; si no
+        // viene, el alta queda activa. filter_var entiende true/false, 1/0 y
+        // las cadenas "true"/"false". Antes estaba fijo en 1 y por eso un
+        // paciente creado como inactivo se guardaba como activo.
+        $activo = isset($data['activo'])
+            ? (int) filter_var($data['activo'], FILTER_VALIDATE_BOOLEAN)
+            : 1;
+
         // Crear el paciente
         // Llama al repositorio con los campos validados y sanitizados
         $id = $this->repo->crear([
             'dni' => $dni,
             'nombre' => $nombre,
             'id_obra_social' => $data['id_obra_social'] ?? 1,
-            'activo' => 1,
+            'activo' => $activo,
         ]);
 
         // Devolver el paciente creado
@@ -206,10 +214,11 @@ class PacienteService
             $limpios['id_obra_social'] = (int)$data['id_obra_social'];
         }
 
-        // Si viene "activo", se normaliza su valor
+        // Si viene "activo", se normaliza su valor. filter_var también
+        // interpreta la cadena "false" como 0; un cast booleano la habría
+        // tomado como verdadera (1) y el paciente seguiría activo.
         if (isset($data['activo'])) {
-            // Operador ternario: convierte cualquier valor a 1 o 0 (booleano a entero)
-            $limpios['activo'] = $data['activo'] ? 1 : 0;
+            $limpios['activo'] = (int) filter_var($data['activo'], FILTER_VALIDATE_BOOLEAN);
         }
 
         // Valida que haya al menos un campo válido para actualizar
