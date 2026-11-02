@@ -518,18 +518,29 @@ Este repositorio se publica en
 `docs/access-connectivity`. Desde la carpeta `SaludWEB_Backend`:
 
 ```bash
-git status                         # 1. Ver qué archivos cambiaron
-git diff                           # 2. Revisar el contenido antes de subirlo
-git add README.md services/MedicoService.php services/PacienteService.php
-git commit -m "fix: respetar estado activo en altas de medicos y pacientes"
-git push origin docs/access-connectivity
-git log --oneline -1               # 6. Confirmar el commit publicado
-git status -sb                     # 7. Debe quedar sin cambios pendientes
+php tests/run.php                  # 1. Pruebas unitarias
+git status                         # 2. Ver qué archivos cambiaron
+git diff                           # 3. Revisar el contenido antes de subirlo
+git add README.md services/MedicoService.php services/PacienteService.php  # 4. Preparar archivos
+git commit -m "fix: respetar estado activo en altas de medicos y pacientes" # 5. Crear commit
+git push origin docs/access-connectivity                                   # 6. Subir a GitHub
+git log --oneline -1               # 7. Confirmar el commit publicado
+git status -sb                     # 8. Debe quedar sin cambios pendientes
 ```
 
-Antes de publicar, ejecutar `php tests/run.php` y las suites de integración que
-correspondan. No subir `storage/saludweb.sqlite`, `vendor/` ni archivos `.env`
-con credenciales; la base local y los secretos están en `.gitignore`.
+Qué hace cada línea:
+
+1. `php tests/run.php`: corre las 50 pruebas unitarias del backend.
+2. `git status`: lista archivos modificados, nuevos y sin seguimiento.
+3. `git diff`: revisa el cambio exacto antes de publicarlo.
+4. `git add ...`: prepara únicamente README y los dos servicios modificados.
+5. `git commit`: crea el commit local con el mensaje del fix.
+6. `git push`: sube la rama `docs/access-connectivity` a GitHub.
+7. `git log --oneline -1`: confirma el hash del commit publicado.
+8. `git status -sb`: confirma que la rama local quedó igual a `origin`.
+
+No subir `storage/saludweb.sqlite`, `vendor/` ni archivos `.env` con
+credenciales; la base local y los secretos están en `.gitignore`.
 
 ## Pruebas
 
