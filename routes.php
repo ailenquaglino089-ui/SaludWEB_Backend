@@ -36,13 +36,40 @@ $corsOrigenes = array_values(array_filter(array_map(
     explode(',', getenv('CORS_ORIGINS') ?: 'http://localhost:5173,http://127.0.0.1:5173,http://localhost,http://127.0.0.1')
 )));
 
+/**
+ * Indica si un Origin pertenece a la red local.
+ *
+ * La web se puede abrir desde el celular con la IP de la PC
+ * (por ejemplo http://192.168.1.4:5173). Esa IP cambia según la WiFi,
+ * así que no se puede fijar en CORS_ORIGINS. Se aceptan solo orígenes
+ * de loopback o de rangos IPv4 privados (10/8, 172.16/12, 192.168/16):
+ * nunca un dominio público.
+ */
+$esOrigenLocal = static function (string $origen): bool {
+    $partes = parse_url($origen);
+    if (!is_array($partes) || ($partes['scheme'] ?? '') !== 'http') {
+        return false;
+    }
+
+    $host = $partes['host'] ?? '';
+    if (in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
+        return true;
+    }
+
+    if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+        return false;
+    }
+
+    return preg_match('/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/', $host) === 1;
+};
+
 // Si la petición trae un Origin, solo respondemos si está en la whitelist
 // HTTP_ORIGIN es el encabezado que envía el navegador indicando desde qué sitio se hace la llamada
 // El operador ?? (null coalescing) pone '' si la petición NO trae encabezado Origin (ej: Postman, curl)
 $origen = $_SERVER['HTTP_ORIGIN'] ?? '';
 // Solo se envían cabeceras CORS si hay Origin y además ese Origin está en la lista blanca
 // in_array($origen, $corsOrigenes, true): $origen debe coincidir EXACTAMENTE (tercer parámetro true = comparación estricta)
-if ($origen !== '' && in_array($origen, $corsOrigenes, true)) {
+if ($origen !== '' && (in_array($origen, $corsOrigenes, true) || $esOrigenLocal($origen))) {
     // Devuelve al navegador el origen permitido (se refleja el mismo origin, nunca "*" con credentials)
     header("Access-Control-Allow-Origin: $origen");
     // Permite que la petición incluya cookies/credenciales (sesión BORRAR), solo válido con whitelist

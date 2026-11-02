@@ -39,8 +39,8 @@ class ValidadorTest extends TestCase
             'un email inválido se rechaza con 422' => [$this, 'pruebaEmailInvalido'],
             'un email vacío se rechaza' => [$this, 'pruebaEmailVacio'],
             'el login usa su propio mensaje y su propio código' => [$this, 'pruebaEmailMensajePropio'],
-            'una contraseña de 6 y de 72 caracteres se acepta' => [$this, 'pruebaPasswordEnLosLimites'],
-            'una contraseña corta se rechaza' => [$this, 'pruebaPasswordCorta'],
+            'una contraseña de 1 y de 72 caracteres se acepta' => [$this, 'pruebaPasswordEnLosLimites'],
+            'una contraseña vacía se rechaza' => [$this, 'pruebaPasswordVacia'],
             'una contraseña larga se rechaza' => [$this, 'pruebaPasswordLarga'],
             'textoLimpio quita HTML y espacios' => [$this, 'pruebaTextoLimpio'],
             'textoLimpio de null devuelve cadena vacía' => [$this, 'pruebaTextoLimpioNulo'],
@@ -141,21 +141,28 @@ class ValidadorTest extends TestCase
         $t->ejecutar(
             fn() => null,
             fn() => [
-                Validador::password('123456'),      // 6: el mínimo
+                Validador::password('1'),          // 1: el mínimo
+                Validador::password('12345'),      // cualquier contraseña no vacía
                 Validador::password(str_repeat('a', 72)), // 72: el máximo de bcrypt
             ],
             function (array $resultado) use ($t): void {
-                $t->afirmarIgual('123456', $resultado[0]);
-                $t->afirmarIgual(72, strlen($resultado[1]));
+                $t->afirmarIgual('1', $resultado[0]);
+                $t->afirmarIgual('12345', $resultado[1]);
+                $t->afirmarIgual(72, strlen($resultado[2]));
             }
         );
     }
 
-    /** Falla: un carácter menos que el mínimo. */
-    public function pruebaPasswordCorta(TestCase $t): void
+    /** Falla: la contraseña no puede estar vacía. */
+    public function pruebaPasswordVacia(TestCase $t): void
     {
         $t->afirmarLanza(
-            fn() => Validador::password('12345'),
+            fn() => Validador::password(''),
+            \InvalidArgumentException::class,
+            422
+        );
+        $t->afirmarLanza(
+            fn() => Validador::password(null),
             \InvalidArgumentException::class,
             422
         );

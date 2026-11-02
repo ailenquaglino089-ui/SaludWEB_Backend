@@ -49,6 +49,7 @@ probar_seguridad.php        →  regresión de seguridad (401 sin token, 422 al 
 resetear_password.php       →  (re)establece la contraseña de una cuenta (solo consola/desarrollo)
 listar_usuarios.php         →  lista las cuentas existentes sin mostrar contraseñas (desarrollo)
 migrar_mysql_a_sqlite.php   →  importa datos de una base MySQL vieja a SQLite (opcional)
+limpiar_especialidades_duplicadas.php → fusiona especialidades escritas con tildes o mayúsculas distintas
 AGENDA_DE_TRABAJO.md        →  planificación, hitos y pasos del proyecto
 PROJECT_BRIEF.md            →  brief del proyecto y entregables
 ```
@@ -332,6 +333,28 @@ su ficha, pero **no sirve como credencial de acceso**.
 | Notificaciones | `GET /api/notificaciones`, `POST .../recordatorios`, `.../{id}/reintentar` | Protegidas |
 | Notificaciones | `POST /api/notificaciones/procesar` | Solo admin |
 | Usuarios | `GET /api/usuarios`, `GET /api/usuarios/roles`, `PATCH /api/usuarios/{id}/rol` | Solo admin |
+
+### Catálogo de especialidades sin duplicados
+
+El alta y la edición de especialidades comparan los nombres **sin tildes, sin
+mayúsculas y con los espacios colapsados**. Así `Cardiologia` y `Cardiología`
+se reconocen como la misma y la API responde `409` antes de crear una fila
+repetida. La regla vive en `services/EspecialidadService.php` y se explica
+línea por línea en ese archivo.
+
+Los datos viejos pueden tener duplicados creados antes de esa validación. Para
+depurarlos sin tocar usuarios, contraseñas ni turnos:
+
+```bash
+php limpiar_especialidades_duplicadas.php
+```
+
+El script agrupa por nombre normalizado, elige la fila canónica (la que tiene
+más médicos activos; si hay empate, la más antigua), reasigna los médicos de
+las variantes y borra las filas sobrantes. Es **idempotente**: si se ejecuta
+dos veces, la segunda informa que no hay duplicados. También se puede ver el
+resultado en la turnera: el selector de especialidad deja de mostrar dos
+entradas casi iguales, una de ellas con `(0)` profesionales.
 
 ## Primer acceso (importante al clonar)
 

@@ -43,8 +43,14 @@ class Validador
     /** Longitud máxima de un email (límite de la columna en la BD) */
     private const EMAIL_MAXIMO = 255;
 
-    /** Longitud mínima y máxima de una contraseña (bcrypt procesa 72 bytes) */
-    private const PASSWORD_MINIMO = 6;
+    /**
+     * Longitud mínima y máxima de una contraseña (bcrypt procesa 72 bytes).
+     *
+     * El mínimo es 1 a propósito: el sistema deja que cada persona elija la
+     * contraseña que quiera. La única regla es que no esté vacía, porque una
+     * contraseña vacía no se puede distinguir de "no envió nada".
+     */
+    private const PASSWORD_MINIMO = 1;
     private const PASSWORD_MAXIMO = 72;
 
     /**
@@ -96,7 +102,7 @@ class Validador
      */
     public static function password(
         mixed $password,
-        string $mensaje = 'La contraseña debe tener entre 6 y 72 caracteres',
+        string $mensaje = 'La contraseña no puede estar vacía (máximo 72 caracteres)',
         int $estado = 422
     ): string {
         $valor = (string) ($password ?? '');

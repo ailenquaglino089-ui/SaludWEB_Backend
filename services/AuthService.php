@@ -63,7 +63,7 @@ class AuthService
             'El nombre es obligatorio (máx. 100 caracteres)'
         );
 
-        // La contraseña: mínimo 6, máximo 72 (límite de bytes de bcrypt).
+        // La contraseña: no vacía, máximo 72 (límite de bytes de bcrypt).
         $password = Validador::password($data['password'] ?? '');
 
         // Verificar que el email no exista
@@ -531,7 +531,7 @@ class AuthService
     public function cambiarContrasena(int $id, string $passwordActual, string $passwordNueva): bool
     {
         // Obtener usuario
-        // Consulta parametrizada que trae solo el hash de la contraseña del usuario
+        // La consulta solo necesita el hash para verificar la contraseña actual.
         $stmt = $this->pdo->prepare("SELECT password FROM usuarios WHERE id = ?");
         // Ejecuta la consulta con el ID como parámetro
         $stmt->execute([$id]);
@@ -545,24 +545,30 @@ class AuthService
         }
 
         // Verificar contraseña actual
-        // Compara la contraseña actual ingresada contra el hash almacenado
+        // Compara la contraseña actual ingresada contra el hash almacenado.
         if (!password_verify($passwordActual, $row['password'])) {
             // HTTP 401: la contraseña actual no coincide con el hash guardado
             throw new \InvalidArgumentException('Contraseña actual incorrecta', 401);
         }
 
         // Validar nueva contraseña
-        // Valida el largo mínimo de la nueva contraseña
-        if (strlen($passwordNueva) < 6) {
-            // HTTP 422: la nueva contraseña no cumple los requisitos
-            throw new \InvalidArgumentException('La nueva contraseña debe tener al menos 6 caracteres', 422);
+        // La persona puede elegir la contraseña que quiera: la única regla es
+        // que no esté vacía y que no supere el límite de bcrypt (72 bytes).
+        if (trim($passwordNueva) === '') {
+            // HTTP 422: la nueva contraseña no cumple el único requisito
+            throw new \InvalidArgumentException('La nueva contraseña no puede estar vacía', 422);
+        }
+        if (strlen($passwordNueva) > 72) {
+            throw new \InvalidArgumentException('La nueva contraseña no puede superar los 72 caracteres', 422);
         }
 
         // Actualizar contraseña
         // Genera el nuevo hash bcrypt de la contraseña
         $newHash = password_hash($passwordNueva, PASSWORD_BCRYPT);
         // Prepara el UPDATE parametrizado (solo se modifica la contraseña del ID indicado)
-        $stmt = $this->pdo->prepare("UPDATE usuarios SET password = ? WHERE id = ?");
+        $stmt = $this->pdo->prepare(
+            "UPDATE usuarios SET password = ? WHERE id = ?"
+        );
         // Ejecuta la actualización y retorna true si se afectó al menos una fila
         return $stmt->execute([$newHash, $id]);
     }
