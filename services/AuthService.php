@@ -719,26 +719,85 @@ class AuthService
     }
 
     /**
-     * Vincula un usuario con su ficha de paciente verificando DNI y nombre
+     * Vincula un usuario con su ficha de paciente verificando DNI y nombre.
+     *
+     * Si el DNI todavía no existe en el consultorio, la ficha se crea en ese
+     * momento con el nombre de la cuenta. Así una persona que se registra
+     * desde la web puede reservar sin esperar a que recepción la cargue.
+     * Cuando el DNI ya existe, se mantiene la verificación por nombre: nadie
+     * puede apropiarse de la ficha de otra persona solo con saber su DNI.
+     *
      * @param array $usuario Fila del usuario ya obtenida
      * @param string $dni DNI informado
      * @return array El usuario actualizado
      */
     private function vincularPaciente(array $usuario, string $dni): array
     {
-        // Se busca al paciente por DNI (el índice uniq_dni hace la búsqueda directa)
-        $stmt = $this->pdo->prepare("SELECT * FROM pacientes WHERE dni = ? LIMIT 1");
-        $stmt->execute([$dni]);
+        // Se quitan puntos, guiones y espacios: "10.000.010" y "10000010"
+        // tienen que encontrar la misma ficha y no generar duplicados.
+        $dniNormalizado = $this->normalizarDocumento($dni);
+
+        // Sin DNI no hay forma de identificar la ficha que se quiere usar.
+        if ($dniNormalizado === '') {
+            throw new \InvalidArgumentException('Ingresá tu número de DNI', 422);
+        }
+
+        // La columna admite hasta 50 caracteres; se valida antes del INSERT.
+        Validador::longitudMaxima(
+            $dniNormalizado,
+            50,
+            'El DNI no puede superar los 50 caracteres'
+        );
+
+        // La comparación se hace sin puntos ni guiones porque las fichas
+        // existentes guardan el DNI con formatos distintos ("10.000.010",
+        // "10000010"). REPLACE se aplica a la columna, no al valor recibido.
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM pacientes
+             WHERE REPLACE(REPLACE(REPLACE(COALESCE(dni, ''), '.', ''), '-', ''), ' ', '') = ?
+             LIMIT 1"
+        );
+        $stmt->execute([$dniNormalizado]);
         $paciente = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        // Si no existe una ficha con ese DNI, el mensaje es el mismo que si
-        // existiera pero fuera de otro: no se confirma la existencia de fichas
         if (!$paciente) {
-            throw new \InvalidArgumentException(
-                'No encontramos una ficha de paciente con ese DNI y nombre. '
-                . 'Verificá los datos o pedí ayuda en recepción.',
-                422
+            // Una cuenta ya vinculada no puede "mudarse" a una ficha nueva:
+            // si se permitiera, alguien podría abandonar su ficha y crear
+            // otra con cualquier DNI. El cambio requiere intervención
+            // administrativa.
+            if (!empty($usuario['id_paciente'])) {
+                throw new \InvalidArgumentException('Tu cuenta ya está vinculada a otra ficha de paciente', 409);
+            }
+
+            // El nombre de la cuenta ya fue validado al registrarse, pero se
+            // vuelve a sanear porque ahora se copia a otra tabla.
+            $nombreFicha = Validador::textoObligatorio(
+                $usuario['nombre'] ?? '',
+                150,
+                'El nombre de la cuenta no es válido para crear la ficha'
             );
+
+            // Se crea la ficha con los datos mínimos que exige la tabla:
+            // DNI, nombre, obra social por defecto y estado activo.
+            $stmt = $this->pdo->prepare(
+                "INSERT INTO pacientes (dni, nombre, id_obra_social, activo)
+                 VALUES (?, ?, 1, 1)"
+            );
+            $stmt->execute([$dniNormalizado, $nombreFicha]);
+            $idPaciente = (int) $this->pdo->lastInsertId();
+
+            // Se guarda el vínculo en la misma operación lógica: la ficha
+            // recién creada pertenece a la cuenta que la originó.
+            $stmt = $this->pdo->prepare("UPDATE usuarios SET id_paciente = ? WHERE id = ?");
+            $stmt->execute([$idPaciente, (int) $usuario['id']]);
+
+            // Evento normal: la cuenta quedó utilizable para reservar.
+            Logger::info('ficha de paciente creada al vincular cuenta', [
+                'usuario_id' => (int) $usuario['id'],
+                'paciente_id' => $idPaciente,
+            ]);
+
+            return $this->obtenerPorId((int) $usuario['id']);
         }
 
         // El paciente tiene que estar dado de alta: vincular una ficha baja
@@ -782,6 +841,23 @@ class AuthService
         $stmt->execute([(int)$paciente['id'], (int)$usuario['id']]);
 
         return $this->obtenerPorId((int)$usuario['id']);
+    }
+
+    /**
+     * Normaliza un documento para compararlo con la base.
+     *
+     * Deja solo los caracteres que identifican el número: quita espacios,
+     * puntos y guiones. No quita letras porque una matrícula o un documento
+     * extranjero pueden tenerlas; el objetivo es que el formato no cambie
+     * la identidad del valor.
+     *
+     * @param string $documento Documento recibido
+     * @return string Documento comparable
+     */
+    private function normalizarDocumento(string $documento): string
+    {
+        // preg_replace devuelve null si falla; el "?? ''" mantiene el tipo.
+        return preg_replace('/[\s.\-]+/u', '', trim($documento)) ?? '';
     }
 
     /**

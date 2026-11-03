@@ -17,7 +17,9 @@ la app móvil consumen esta misma API).
   se guardan como hash bcrypt y nunca se pueden recuperar en texto plano.
 - **Vinculación de cuentas con fichas** (turnera): al loguearse, el usuario debe quedar
   vinculado a una ficha — el **médico** con su **matrícula** y el **paciente** con su **DNI** —
-  para saber *a quién* se le asigna cada turno.
+  para saber *a quién* se le asigna cada turno. Si el DNI del paciente todavía no tiene
+  ficha, se crea automáticamente con el nombre de la cuenta; si ya existe, el nombre debe
+  coincidir para evitar que alguien se apropie de una ficha ajena.
 - **Turnera (sistema de gestión de citas online)**: especialidades, disponibilidades,
   reserva/cancelación de turnos, agenda, notificaciones con token y estadísticas de gestión.
 - **Avisos de tiempo real con Server-Sent Events (SSE)**: cuando cambia un turno, el servidor
@@ -285,7 +287,9 @@ Notas de formato del `.env`:
    (el email del proveedor debe coincidir). Sin credenciales configuradas responde `501`.
 5. `POST /api/auth/vincular` con `{ "tipo": "medico", "documento": "<matrícula>" }` o
    `{ "tipo": "paciente", "documento": "<DNI>" }` → vincula la cuenta con su ficha.
-   Sin ficha vinculada, el usuario no puede reservar turnos.
+   Sin ficha vinculada, el usuario no puede reservar turnos. En pacientes, si el DNI
+   normalizado no existe, la ficha se crea en ese momento y queda vinculada a la cuenta;
+   si el DNI ya existe, se exige que el nombre de la cuenta coincida con el de la ficha.
 
 ### Email y contraseña
 
@@ -511,19 +515,88 @@ El alta respetaba el checkbox en el frontend, pero el backend lo pisaba con
   se borraron con `DELETE`. El E2E de la web confirmó lo mismo desde la UI:
   `MEDICO_ALTA_INACTIVO_OK` y `PACIENTE_ALTA_INACTIVO_OK`.
 
+### Vinculación de pacientes sin ficha: creación automática (02/11/2026)
+
+Problema: una persona podía registrarse desde el enlace público y quedar
+autenticada, pero no podía reservar. Su cuenta no tenía `id_paciente` y, si el
+DNI no existía en el consultorio, la vinculación fallaba porque solo buscaba
+fichas ya cargadas.
+
+Archivo: `services/AuthService.php`, método `vincularPaciente()`.
+
+- **Líneas 721-733** - El docblock deja explícita la regla nueva: si el DNI no
+  existe, la ficha se crea en el momento con el nombre de la cuenta; si existe,
+  se mantiene la verificación por nombre. Así una cuenta recién registrada puede
+  reservar sin esperar a que recepción cargue la ficha.
+- **Líneas 736-738** - `normalizarDocumento()` quita puntos, guiones y espacios
+  antes de buscar. `"10.000.010"` y `"10000010"` tienen que encontrar la misma
+  ficha y no generar duplicados.
+- **Líneas 740-743** - Un DNI vacío se rechaza con `422` y el mensaje
+  "Ingresá tu número de DNI": sin documento no hay forma de identificar la ficha.
+- **Líneas 745-750** - `Validador::longitudMaxima()` limita el DNI a 50
+  caracteres, que es el tamaño de la columna, antes de llegar al `INSERT`.
+- **Líneas 752-761** - La búsqueda compara la columna `dni` sin puntos, guiones
+  ni espacios (`REPLACE` sobre la columna). Las fichas viejas guardaron el DNI
+  con formatos distintos y tienen que seguir siendo encontrables.
+- **Líneas 763-770** - Si no hay ficha y la cuenta **ya estaba vinculada**, se
+  responde `409`. Una cuenta no puede abandonar su ficha y crear otra con
+  cualquier DNI: ese cambio requiere intervención administrativa.
+- **Líneas 772-778** - El nombre de la cuenta se vuelve a validar con
+  `Validador::textoObligatorio()` antes de copiarlo a `pacientes`; no se confía
+  en un valor viejo aunque se haya validado en el registro.
+- **Líneas 780-787** - Se inserta la ficha mínima: `dni` normalizado, `nombre`,
+  `id_obra_social = 1` y `activo = 1`. `lastInsertId()` devuelve el id recién
+  creado.
+- **Líneas 789-792** - El `UPDATE usuarios SET id_paciente = ?` deja el vínculo
+  en la misma operación lógica: la ficha pertenece a la cuenta que la originó.
+- **Líneas 794-800** - Se registra un evento informativo (sin datos clínicos) y
+  se devuelve el usuario actualizado para que la sesión traiga `id_paciente`.
+- **Líneas 803-807** - Si la ficha existía pero está dada de baja (`activo = 0`),
+  se rechaza con `422`. Vincularla solo generaría un error más adelante.
+- **Líneas 809-818** - Los nombres se comparan sin tildes, mayúsculas ni espacios
+  mediante `normalizarTexto()` y `coincidenNombres()`.
+- **Líneas 819-824** - Si el nombre no coincide, se responde `422` con
+  "El nombre de la cuenta no coincide con el de la ficha del DNI". Saber el DNI
+  de otra persona no alcanza para apropiarse de su ficha.
+- **Líneas 826-830** - Una cuenta vinculada a una ficha distinta de la que
+  encontró por DNI recibe `409`: no puede "mudarse" de ficha sola.
+- **Líneas 832-837** - Si otra cuenta ya usa esa ficha, se responde `409`. Dos
+  cuentas sobre la misma ficha podrían ver y cancelar los mismos turnos.
+- **Líneas 839-843** - Si todas las validaciones pasan, se guarda el vínculo con
+  `UPDATE usuarios SET id_paciente = ?` y se devuelve el usuario actualizado.
+- **Líneas 846-861** - `normalizarDocumento()` usa
+  `preg_replace('/[\s.\-]+/u', '', trim($documento)) ?? ''`: quita espacios,
+  puntos y guiones, conserva letras (matrículas o documentos extranjeros) y
+  mantiene el tipo `string` aunque el reemplazo falle.
+
+Reglas que quedaron fijas:
+
+- El médico sigue necesitando una **matrícula existente**; no se auto-crean
+  fichas profesionales.
+- El paciente sin ficha obtiene una ficha nueva, pero solo si su cuenta todavía
+  no está vinculada.
+- El paciente con DNI existente debe superar la comparación de nombre.
+- Una ficha y una cuenta se vinculan de a una: no se comparten entre cuentas.
+
+Verificación ejecutada: `php -l services/AuthService.php` sin errores,
+`php tests/run.php` 50/50, `php probar_vinculacion.php` 15/15. En el servidor
+público, un DNI nuevo creó su ficha y reservó/canceló un turno; un DNI existente
+vinculó la ficha correcta; un DNI ajeno respondió `422` con el mensaje de nombre
+no coincidente. Los registros de prueba se borraron al terminar.
+
 ## Publicar cambios en GitHub (paso a paso)
 
 Este repositorio se publica en
-`https://github.com/ailenquaglino089-ui/SaludWEB_Backend.git`, rama
-`docs/access-connectivity`. Desde la carpeta `SaludWEB_Backend`:
+`https://github.com/ailenquaglino089-ui/SaludWEB_Backend.git`, rama `main`.
+Desde la carpeta `SaludWEB_Backend`:
 
 ```bash
 php tests/run.php                  # 1. Pruebas unitarias
 git status                         # 2. Ver qué archivos cambiaron
 git diff                           # 3. Revisar el contenido antes de subirlo
-git add README.md services/MedicoService.php services/PacienteService.php  # 4. Preparar archivos
-git commit -m "fix: respetar estado activo en altas de medicos y pacientes" # 5. Crear commit
-git push origin docs/access-connectivity                                   # 6. Subir a GitHub
+git add README.md services/AuthService.php  # 4. Preparar archivos
+git commit -m "fix: crear ficha de paciente al vincular cuenta"  # 5. Crear commit
+git push origin main               # 6. Subir a GitHub
 git log --oneline -1               # 7. Confirmar el commit publicado
 git status -sb                     # 8. Debe quedar sin cambios pendientes
 ```
@@ -533,9 +606,9 @@ Qué hace cada línea:
 1. `php tests/run.php`: corre las 50 pruebas unitarias del backend.
 2. `git status`: lista archivos modificados, nuevos y sin seguimiento.
 3. `git diff`: revisa el cambio exacto antes de publicarlo.
-4. `git add ...`: prepara únicamente README y los dos servicios modificados.
+4. `git add ...`: prepara únicamente README y el servicio modificado.
 5. `git commit`: crea el commit local con el mensaje del fix.
-6. `git push`: sube la rama `docs/access-connectivity` a GitHub.
+6. `git push`: sube la rama `main` a GitHub.
 7. `git log --oneline -1`: confirma el hash del commit publicado.
 8. `git status -sb`: confirma que la rama local quedó igual a `origin`.
 
@@ -589,10 +662,10 @@ la base**.
 | `php sembrar_datos_demo.php` | Carga los datos de demostración | **Escribe la base** (idempotente; no toca usuarios ni claves). |
 | `php migrar_mysql_a_sqlite.php` | Migra desde una base MySQL | **Escribe la base destino**; necesita MySQL accesible. |
 
-Última corrida completa (19/10/2026): **80 archivos PHP sin errores de
-sintaxis**, **50/50 pruebas unitarias** y **todas las suites de integración con
-`EXIT=0`** (turnera, vinculación, roles, seguridad, tiempo real y roles por
-HTTP). Ninguna dejó datos atrás.
+Última corrida (02/11/2026): `services/AuthService.php` sin errores de
+sintaxis, **50/50 pruebas unitarias** y **15/15 casos de vinculación** OK.
+Las suites de integración de turnera, roles, seguridad y tiempo real ya estaban
+en `EXIT=0`; los datos descartables de las pruebas se borraron al terminar.
 
 ## Documentación del proyecto
 
