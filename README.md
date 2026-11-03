@@ -587,8 +587,9 @@ no coincidente. Los registros de prueba se borraron al terminar.
 ## Publicar cambios en GitHub (paso a paso)
 
 Este repositorio se publica en
-`https://github.com/ailenquaglino089-ui/SaludWEB_Backend.git`, rama `main`.
-Desde la carpeta `SaludWEB_Backend`:
+`https://github.com/ailenquaglino089-ui/SaludWEB_Backend.git`. La rama `main`
+está protegida: exige un **pull request**, así que no se puede empujar directo
+con `git push origin main`. Desde la carpeta `SaludWEB_Backend`:
 
 ```bash
 php tests/run.php                  # 1. Pruebas unitarias
@@ -596,9 +597,12 @@ git status                         # 2. Ver qué archivos cambiaron
 git diff                           # 3. Revisar el contenido antes de subirlo
 git add README.md services/AuthService.php  # 4. Preparar archivos
 git commit -m "fix: crear ficha de paciente al vincular cuenta"  # 5. Crear commit
-git push origin main               # 6. Subir a GitHub
-git log --oneline -1               # 7. Confirmar el commit publicado
-git status -sb                     # 8. Debe quedar sin cambios pendientes
+git push origin docs/access-connectivity  # 6. Subir la rama de trabajo
+gh pr create --repo ailenquaglino089-ui/SaludWEB_Backend --base main --head docs/access-connectivity --title "fix: crear ficha de paciente al vincular cuenta" --body "Crea la ficha de paciente al vincular una cuenta cuando el DNI no existe."  # 7. Abrir PR
+gh pr merge --repo ailenquaglino089-ui/SaludWEB_Backend --merge  # 8. Fusionar el PR en main
+git fetch origin                   # 9. Traer el merge publicado
+git log --oneline -1 origin/main   # 10. Confirmar el merge en main
+git status -sb                     # 11. Debe quedar sin cambios pendientes
 ```
 
 Qué hace cada línea:
@@ -608,9 +612,14 @@ Qué hace cada línea:
 3. `git diff`: revisa el cambio exacto antes de publicarlo.
 4. `git add ...`: prepara únicamente README y el servicio modificado.
 5. `git commit`: crea el commit local con el mensaje del fix.
-6. `git push`: sube la rama `main` a GitHub.
-7. `git log --oneline -1`: confirma el hash del commit publicado.
-8. `git status -sb`: confirma que la rama local quedó igual a `origin`.
+6. `git push`: sube la rama de trabajo (no `main`) a GitHub.
+7. `gh pr create`: abre el pull request desde `docs/access-connectivity` hacia
+   `main`, que es la única vía permitida por la protección de la rama.
+8. `gh pr merge`: fusiona el PR en `main`. Sin número porque el PR abierto es el
+   de la rama actual.
+9. `git fetch`: actualiza las referencias remotas sin cambiar los archivos.
+10. `git log origin/main`: confirma el commit de merge publicado.
+11. `git status -sb`: confirma que la rama local quedó igual a `origin`.
 
 No subir `storage/saludweb.sqlite`, `vendor/` ni archivos `.env` con
 credenciales; la base local y los secretos están en `.gitignore`.
