@@ -25,22 +25,20 @@
 //   - Que el listado sin filtro de un paciente no filtre (= no se vea nada)
 //
 // IMPORTANTE
-//   Esta prueba crea datos (un usuario, una ficha de paciente y una cita)
-//   y los borra al terminar. Está pensada para desarrollo, contra la base
-//   de pruebas, no para producción.
+//   Esta prueba crea datos (un usuario, la ficha de paciente que genera la
+//   vinculación y una cita) y los borra al terminar. Está pensada para
+//   desarrollo, contra la base de pruebas, no para producción.
 //
-//   La ficha de paciente se crea en la base a propósito: antes esta prueba
-//   dependía de una variable de entorno (TEST_DNI) con el DNI de un paciente
-//   real, así que sin ella la vinculación se saltaba y la prueba de reserva
-//   fallaba después con un 403 que no tenía nada que ver con lo que se
-//   estaba probando. Ahora la prueba es autocontenida y repetible.
+//   Desde que el backend crea la ficha al vincular un DNI inexistente, la
+//   prueba es autocontenida: no depende de TEST_DNI ni de una ficha cargada
+//   de antemano. El DNI se genera al azar para no chocar con datos reales.
 // ============================================================
 
 // URL de la API: se puede pasar como argumento o se usa la de desarrollo
 $base = $argv[1] ?? 'http://127.0.0.1:8000';
 
-// Acceso a la base, solo para crear y borrar la ficha temporal del paciente.
-// La API se prueba por HTTP; la base se toca únicamente para el fixture.
+// Acceso a la base, solo para borrar la ficha temporal del paciente.
+// La API se prueba por HTTP; la base se toca únicamente para la limpieza.
 require_once __DIR__ . '/db.php';
 
 // Contador de pasos bien y mal, para el resumen final
@@ -166,9 +164,6 @@ register_shutdown_function('limpiar');
 $sufijo = 'turnera' . date('His');
 $email = $sufijo . '@salud.com';
 $password = 'prueba123';
-
-// Se busca un paciente activo con DNI para probar la vinculación
-$emailFicticio = 'sin.ficha.' . $sufijo . '@salud.com';
 
 // ============================================================
 // 1. CATÁLOGOS PÚBLICOS
@@ -315,52 +310,34 @@ paso(
 // ============================================================
 echo "\n--- Vinculación de ficha ---\n";
 
-// Se prueba primero con un DNI que no existe: debe fallar
+// DNI de prueba: 8 dígitos, empieza con 9 para no pisar un DNI real
+$dni = '9' . mt_rand(10000000, 99999999);
+
+// Un DNI que no existe ya no es un error: el backend crea la ficha con el
+// nombre de la cuenta y la vincula en la misma operación.
 [$codigo, $r] = pedir('POST', $base . '/api/auth/vincular', [
     'tipo' => 'paciente',
-    'documento' => '00000000',
+    'documento' => $dni,
 ], $token);
-paso($codigo === 422, 'Vincular con un DNI inexistente falla (422)', "HTTP $codigo");
-
-// El DNI real se recibe por variable de entorno para que la prueba no
-// quede atada a un dato concreto de esta base
-$dni = getenv('TEST_DNI') ?: '';
-if ($dni !== '') {
-    [$codigo, $r] = pedir('POST', $base . '/api/auth/vincular', [
-        'tipo' => 'paciente',
-        'documento' => $dni,
-    ], $token);
-    paso($codigo === 200, "Vincular con el DNI $dni", "HTTP $codigo: " . ($r['mensaje'] ?? ''));
-} else {
-    // Sin DNI externo, la prueba crea su propia ficha. El nombre coincide a
-    // propósito con el del usuario recién registrado: la vinculación valida
-    // que el nombre de la cuenta sea el de la ficha del DNI.
-    $obraSocial = $pdo->query('SELECT id FROM obras_sociales ORDER BY id LIMIT 1')->fetchColumn();
-
-    if ($obraSocial === false) {
-        echo "[OMITE] Vincular con DNI real: no hay obras sociales cargadas\n";
-    } else {
-        // DNI de prueba: 8 dígitos, empieza con 9 para no pisar un DNI real
-        $dni = '9' . mt_rand(10000000, 99999999);
-        $stmt = $pdo->prepare(
-            'INSERT INTO pacientes (dni, nombre, id_obra_social, activo) VALUES (?, ?, ?, 1)'
-        );
-        $stmt->execute([$dni, 'Prueba Turnera', (int)$obraSocial]);
-        $creado['paciente'] = (int)$pdo->lastInsertId();
-
-        echo "[INFO] Ficha temporal creada: DNI $dni (id {$creado['paciente']})\n";
-
-        [$codigo, $r] = pedir('POST', $base . '/api/auth/vincular', [
-            'tipo' => 'paciente',
-            'documento' => $dni,
-        ], $token);
-        paso(
-            $codigo === 200,
-            'Vincular la cuenta con la ficha del DNI',
-            "HTTP $codigo: " . ($r['mensaje'] ?? '')
-        );
-    }
+$idPaciente = $r['data']['id_paciente'] ?? null;
+if ($idPaciente !== null) {
+    $creado['paciente'] = (int)$idPaciente;
 }
+paso(
+    $codigo === 200 && $idPaciente !== null,
+    "Vincular con un DNI inexistente crea la ficha ($dni)",
+    "HTTP $codigo: " . ($r['mensaje'] ?? '')
+);
+
+[$codigo, $r] = pedir('POST', $base . '/api/auth/vincular', [
+    'tipo' => 'paciente',
+    'documento' => $dni,
+], $token);
+paso(
+    $codigo === 200 && ($r['data']['id_paciente'] ?? null) === $idPaciente,
+    'Volver a vincular el mismo DNI es idempotente',
+    "HTTP $codigo: " . ($r['mensaje'] ?? '')
+);
 
 // ============================================================
 // 6. RESERVA

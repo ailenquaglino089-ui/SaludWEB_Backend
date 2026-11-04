@@ -41,6 +41,7 @@ persistence/                →  consultas SQL (patrón Repositorio)
 vendor/                     →  firebase/php-jwt (instalado con Composer)
 GUIA_TIEMPO_REAL.md         →  guía del módulo de tiempo real (SSE): leer primero
 sembrar_datos_demo.php      →  regenera las fichas de demostración (idempotente)
+sembrar_turnera_demo.php    →  agrega profesionales y agenda de demostración (idempotente)
 probar_roles.php            →  suite de pruebas de roles y permisos
 probar_roles_http.php       →  idem, contra la API real por HTTP
 probar_vinculacion.php      →  suite de pruebas de vinculación de fichas
@@ -436,6 +437,88 @@ El script es **idempotente**: crea o adopta fichas según matrícula/DNI y vincu
 cuentas existentes. **No crea usuarios ni toca contraseñas**, así que las cuentas deben
 existir de antes.
 
+Para que el catálogo público de la turnera no quede con especialidades sin profesionales,
+el proyecto incluye una siembra específica de profesionales y agenda:
+
+```bash
+php sembrar_turnera_demo.php
+```
+
+El script es **idempotente**: no duplica médicos ni bloques si se ejecuta otra vez. No crea
+usuarios, así que sirve para poblar la turnera pública aunque las cuentas de esos
+profesionales todavía no existan.
+
+### `sembrar_turnera_demo.php`, línea por línea (04/11/2026)
+
+Archivo nuevo: `sembrar_turnera_demo.php`.
+
+Profesionales que deja cargados:
+
+| Profesional | Matrícula | Especialidad |
+|---|---|---|
+| Dr. Hernán Rivas | `MP-1005` | Cardiología |
+| Dra. Camila Ferreyra | `MP-1006` | Dermatología |
+| Dr. Tomás Aguirre | `MP-1007` | Clínica Médica |
+
+- **Líneas 1-5** - Abre el script PHP, exige `strict_types`, carga `db.php` y reutiliza la
+  conexión PDO del proyecto.
+- **Línea 7** - Configura PDO para que todas las lecturas devuelvan arrays asociativos.
+- **Líneas 9-13** - Declara las especialidades que deben quedar activas: Cardiología,
+  Dermatología y Clínica Médica.
+- **Líneas 15-31** - Declara los tres profesionales con nombre, matrícula y especialidad.
+- **Líneas 33-35** - Prepara la búsqueda por nombre de especialidad, el alta y la
+  reactivación (`UPDATE ... SET activo = 1`).
+- **Líneas 36-42** - Prepara la búsqueda del médico por matrícula, el alta y la
+  actualización de nombre/especialidad/estado.
+- **Líneas 43-56** - Prepara la búsqueda de un bloque por médico, día y hora de inicio, el
+  alta de bloques y la reactivación de un bloque existente.
+- **Línea 58** - Abre una transacción: la siembra se aplica completa o no se aplica.
+- **Líneas 60-69** - Recorre las especialidades: crea la que falta y reactiva la que ya
+  existe pero estaba inactiva.
+- **Líneas 71-96** - Recorre los profesionales: busca por matrícula; si existe actualiza
+  nombre, especialidad y `activo = 1`; si no existe lo crea.
+- **Líneas 98-110** - Para cada médico, recorre los días 1 a 5 (lunes a viernes), busca un
+  bloque a las 09:00 y lo crea o reactiva con fin 13:00 y duración de 30 minutos.
+- **Líneas 112-117** - Confirma la transacción; ante cualquier error hace `rollback`,
+  escribe el mensaje en `STDERR` y sale con código 1.
+- **Líneas 119-132** - Imprime el resumen de especialidades activas y cuántos profesionales
+  activos tiene cada una.
+
+### Ajuste de `probar_turnera.php`, línea por línea (04/11/2026)
+
+Archivo: `probar_turnera.php`.
+
+- **Líneas 27-34** - El docblock ahora explica que la prueba crea su propia ficha al
+  vincular un DNI inexistente y que ya no depende de `TEST_DNI`.
+- **Líneas 40-42** - El comentario aclara que la base se usa solo para la limpieza final.
+- **Líneas 313-314** - Genera un DNI aleatorio de 8 dígitos que empieza con `9`, para no
+  pisar un DNI real.
+- **Líneas 316-330** - Llama a `POST /api/auth/vincular` y espera `200`; guarda
+  `id_paciente` en `$creado['paciente']` para que el `shutdown` borre la ficha temporal.
+- **Líneas 332-340** - Repite la vinculación con el mismo DNI y comprueba que sea
+  idempotente: responde `200` y conserva el mismo `id_paciente`.
+- **Bloque de preparación de datos** - Se eliminó la variable `$emailFicticio`, que ya no
+  se usaba.
+
+### Verificación de esta iteración (04/11/2026)
+
+- `php sembrar_turnera_demo.php` corrido dos veces: la segunda actualiza los mismos tres
+  médicos y no duplica bloques.
+- Base resultante: **8 médicos activos**, **6 especialidades con profesionales** y **55
+  bloques de atención**. Cada profesional nuevo tiene **5 bloques** (lunes a viernes,
+  09:00-13:00, turnos de 30 minutos).
+- `GET /api/especialidades` devuelve Cardiología `1`, Dermatología `1`, Clínica Médica `2`,
+  Medicina General `2`, Neurología `1` y Pediatría `1`. La especialidad `Prueba` sigue con
+  `0` y la web la oculta.
+- `GET /api/medicos?especialidad=Cardiología&activo=1` devuelve al Dr. Hernán Rivas.
+- `GET /api/citas/disponibilidad?id_medico=18&fecha=<día hábil>` devuelve 8 horarios
+  libres.
+- `php probar_turnera.php`: **21/21** pasos OK.
+- `php tests/run.php`: **50/50** pruebas OK.
+- `php probar_vinculacion.php`: **15/15** casos OK.
+- La URL pública `https://saludweb.taileeeb72.ts.net/api/especialidades` devuelve los
+  mismos conteos y el build servido incluye la corrección de la web.
+
 ### Qué hace `sembrar_datos_demo.php`, línea por línea
 
 El script se ejecutó completo sobre la base de desarrollo para cerrar la
@@ -669,12 +752,14 @@ la base**.
 | `php resetear_password.php <email> <clave>` | Reemplaza el hash de una clave | **Escribe la base.** Solo desarrollo local (se niega a correr desde el navegador). |
 | `php seed_pacientes.php <N>` | Crea N pacientes aleatorios | **Escribe la base.** Sirve para probar el paginado. |
 | `php sembrar_datos_demo.php` | Carga los datos de demostración | **Escribe la base** (idempotente; no toca usuarios ni claves). |
+| `php sembrar_turnera_demo.php` | Carga profesionales y agenda para la turnera | **Escribe la base** (idempotente; no crea usuarios). |
 | `php migrar_mysql_a_sqlite.php` | Migra desde una base MySQL | **Escribe la base destino**; necesita MySQL accesible. |
 
-Última corrida (02/11/2026): `services/AuthService.php` sin errores de
-sintaxis, **50/50 pruebas unitarias** y **15/15 casos de vinculación** OK.
-Las suites de integración de turnera, roles, seguridad y tiempo real ya estaban
-en `EXIT=0`; los datos descartables de las pruebas se borraron al terminar.
+Última corrida (04/11/2026): `services/AuthService.php` y
+`sembrar_turnera_demo.php` sin errores de sintaxis, **50/50 pruebas unitarias**,
+**21/21 pasos de `probar_turnera.php`** y **15/15 casos de vinculación** OK. La
+siembra de turnera se ejecutó dos veces sin duplicar médicos ni horarios, y los
+datos descartables de las pruebas se borraron al terminar.
 
 ## Documentación del proyecto
 
@@ -896,7 +981,7 @@ ningún motor instalado, sino **SQLite**, que guarda todo en un solo archivo.
 | Dónde vive | `SaludWEB_Backend/storage/saludweb.sqlite` (relativo a la raíz de este repositorio) |
 | Cómo se crea | Solo, en el **primer request** a la API: `db.php` crea el archivo, las tablas y los datos de ejemplo. No hay que importar ningún SQL. |
 | ¿Se sube a GitHub? | **No.** `storage/` está entero en `.gitignore`, y además los patrones `*.sqlite` protegen el caso de apuntar la base a otra carpeta. Cada clone arranca con una base nueva (sin cuentas: hay que registrarse). |
-| Cómo regenerar los datos de demo | `php sembrar_datos_demo.php` (idempotente: crea o adopta las fichas; **no** crea usuarios ni toca contraseñas) |
+| Cómo regenerar los datos de demo | `php sembrar_datos_demo.php` (idempotente: crea o adopta las fichas; **no** crea usuarios ni toca contraseñas). Para la turnera, `php sembrar_turnera_demo.php` (profesionales y agenda). |
 | Cómo moverla de lugar | Variable `DB_DATABASE` en el `.env` (por defecto `storage/saludweb.sqlite`) |
 | Qué más guarda esa carpeta | `storage/secret.key` (secreto de firma de los JWT), `storage/logs/` (logs diarios) y `storage/rate/` (control de intentos) — todo local y tampoco versionado |
 
