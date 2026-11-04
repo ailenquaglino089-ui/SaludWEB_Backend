@@ -89,7 +89,7 @@
   - L238–L262: prueba de `GET /api/citas/disponibilidad`, verificación de duración mínima de turnos y búsqueda de un turno libre.
   - L263–L286: separador sección 3, registro, login y anotación del usuario creado.
   - L287–L311: separador sección 4; un paciente sin ficha no reserva (403) ni ve citas ajenas.
-  - L312–L363: separador sección 5; vinculación con DNI inexistente (422) y con ficha temporal creada por la prueba.
+  - L309–L341: separador sección 5; vinculación con DNI inexistente (200, crea la ficha) y repetición idempotente.
   - L364–L405: separador sección 6; reserva, choque de doble reserva (409) y verificación de que el slot figura ocupado.
   - L406–L434: separador sección 7; el paciente no puede completar, sí confirmar y se rechaza un estado inválido.
   - L435–L463: separador sección 8; envío de JSON truncado y verificación de que da 400 y no 500.

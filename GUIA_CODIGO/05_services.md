@@ -58,15 +58,13 @@
   - L670–L676: verifica que el usuario exista y esté activo.
   - L677–L700: exige coincidencia entre el tipo de la cuenta y la ficha; despacha a paciente o médico.
   - L701–L708: docblock y firma de `vincularPaciente(array, string): array`.
-  - L709–L723: busca el paciente por DNI y lanza 422 si no existe.
-  - L724–L729: rechaza fichas dadas de baja.
-  - L730–L746: normaliza y compara nombres; lanza 422 si no coinciden.
-  - L747–L766: impide vincular una ficha ya usada y guarda el vínculo.
-  - L767–L774: docblock y firma de `vincularMedico(array, string): array`.
-  - L775–L785: busca el médico por matrícula y lanza 422 si no existe.
-  - L786–L804: rechaza baja, impide ficha ya usada y guarda el vínculo.
-  - L805–L811: docblock y firma de `normalizarTexto(string): string`.
-  - L812–L828: `normalizarTexto`: minúsculas UTF-8, quita tildes y colapsa espacios.
+  - L734–L801: busca la ficha por DNI; si no existe, la crea con el nombre de la cuenta y la vincula (si la cuenta ya tenía otra ficha, responde 409).
+  - L803–L807: rechaza fichas dadas de baja.
+  - L809–L844: normaliza y compara nombres; impide vincular una ficha usada por otra cuenta y guarda el vínculo.
+  - L846–L861: docblock y `normalizarDocumento`: quita espacios, puntos y guiones.
+  - L869–L899: `vincularMedico`: busca por matrícula, rechaza baja o ficha ajena y guarda el vínculo.
+  - L901–L906: docblock y firma de `normalizarTexto(string): string`.
+  - L906–L920: `normalizarTexto`: minúsculas UTF-8, quita tildes y colapsa espacios.
   - L829–L845: docblock de `coincidenNombres` (regla tolerante pero con dos palabras).
   - L846–L861: compara igualdad directa e invierte el formato "Apellido, Nombre".
   - L862–L873: obtiene palabras significativas y corta si alguna queda vacía.

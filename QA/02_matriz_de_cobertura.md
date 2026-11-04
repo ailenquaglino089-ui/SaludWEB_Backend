@@ -91,7 +91,7 @@ administrador · **MED** = solo médico · **TOKEN** = token de notificación (s
 | "Solo médicos recetan" | #24–#26 | Paciente/admin en `POST /api/prescripciones` → 403 | OK |
 | ABM médicos admin-only | #14–#17 | Admin crea/edita/borra; no-admin → 403 | OK |
 | Turnera: reservar | #35, #40, #44 | Reserva de turno libre → 201/200; repetido → 409 | OK (`probar_turnera`) |
-| Turnera: vincular ficha | #11 | DNI inexistente → 422; DNI válido → vincula | OK |
+| Turnera: vincular ficha | #11 | DNI inexistente → 200 y crea ficha; repetido → 200 idempotente | OK (`probar_turnera`) |
 | Turnera: ver solo lo propio | #42 | Paciente sin ficha no ve turnos de otros | OK |
 | Turnera: estados por rol | #46 | Paciente no puede marcar "completada" → 403; sí confirma | OK |
 | Roles: último admin | #58 | Degradar al último admin → 409 | OK |
