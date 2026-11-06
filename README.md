@@ -330,7 +330,7 @@ su ficha, pero **no sirve como credencial de acceso**.
 | Pacientes | `GET /api/pacientes`, `GET /api/pacientes/{id}` | **Requieren token** (exponen nombre + DNI); ya no son públicos |
 | Pacientes | `POST/PUT/PATCH /api/pacientes` (protegido); `DELETE` | Crear/editar con token; borrar solo admin |
 | Médicos | `POST/PUT/PATCH/DELETE /api/medicos/{id}` | **Solo admin** (403 si no) |
-| Prescripciones | `GET` (protegido, dato clínico); `POST/PUT/PATCH`; `DELETE`; `PATCH .../estado` | Crear/editar **solo médico**; borrar solo admin; cambiar estado con token |
+| Prescripciones | `GET`, `GET /{id}`, `GET /paciente/{id_paciente}`, `POST/PUT/PATCH`, `DELETE`, `PATCH .../estado` | Leer, crear, editar y cambiar estado: **solo médico**; el paciente lee solo las suyas por `/paciente/{id}`; borrar: solo admin |
 | Turnera | `GET /api/especialidades`, `/api/disponibilidades`, `/api/citas/disponibilidad` | Catálogos y disponibilidad públicos |
 | Turnera | `GET /api/citas/agenda`, `/api/citas`, `POST /api/citas`, `POST /api/citas/{id}/cancelar`, `PATCH /api/citas/{id}/estado` | Protegidas; el paciente solo ve sus turnos |
 | Turnera | `DELETE /api/citas/{id}`, `POST/PUT/DELETE /api/especialidades` | Solo admin |
@@ -666,6 +666,115 @@ Verificación ejecutada: `php -l services/AuthService.php` sin errores,
 público, un DNI nuevo creó su ficha y reservó/canceló un turno; un DNI existente
 vinculó la ficha correcta; un DNI ajeno respondió `422` con el mensaje de nombre
 no coincidente. Los registros de prueba se borraron al terminar.
+
+## Iteración 05/11/2026: recetas por paciente y lectura clínica restringida
+
+Problema: `GET /api/prescripciones`, `GET /api/prescripciones/{id}` y
+`PATCH /api/prescripciones/{id}/estado` solo comprobaban que hubiera un token válido.
+Cualquier cuenta autenticada —incluido un paciente o un admin— podía leer el listado
+clínico completo o cambiar el estado de una receta. Al mismo tiempo, el paciente no tenía
+una ruta propia para consultar sus recetas.
+
+La solución tiene dos partes: las lecturas y el cambio de estado quedaron reservados al rol
+`medico`, y se agregó `GET /api/prescripciones/paciente/{id_paciente}` para que el paciente
+lea únicamente sus propias recetas. La regla se valida en el backend; la Web y Mobile solo
+acomodan la navegación.
+
+### Matriz de permisos resultante
+
+| Ruta | `admin` | `medico` | `paciente` |
+|---|---|---|---|
+| `GET /api/prescripciones` | `403` | `200` | `403` |
+| `GET /api/prescripciones/paciente/{id}` | `403` | `200` (cualquier paciente) | `200` solo si `id` es el propio; si no, `403` |
+| `GET /api/prescripciones/{id}` | `403` | `200` | `403` |
+| `POST /api/prescripciones` | `403` | `201` | `403` |
+| `PUT/PATCH /api/prescripciones/{id}` | `403` | `200` | `403` |
+| `PATCH /api/prescripciones/{id}/estado` | `403` | `200` | `403` |
+| `DELETE /api/prescripciones/{id}` | `200` | `403` | `403` |
+
+`admin` conserva únicamente el borrado. Un médico puede consultar las recetas de cualquier
+paciente, igual que ya podía hacerlo con el listado clínico global; no se agregó una
+restricción médico-paciente. El paciente nunca puede usar el listado global ni la lectura
+por id de otra persona: su contrato es la ruta `/paciente/{id}` con su propio id.
+
+### `routes.php`, línea por línea
+
+- **Líneas 402-416** — `GET /api/prescripciones`. `verificarToken()` valida el JWT y
+  devuelve el payload; `requireRol($payload, ['medico'])` exige rol médico antes de
+  construir el controlador. Un admin o un paciente reciben `403` y la ejecución se detiene.
+  El `try/catch` conserva el `500` con JSON para errores inesperados.
+- **Líneas 418-439** — `GET /api/prescripciones/paciente/{id_paciente}`. Es la ruta nueva.
+  - **Línea 418** — El router captura `id_paciente` como texto desde la URL.
+  - **Línea 419** — Verifica el token y obtiene `sub`, `rol` y `email`.
+  - **Línea 420** — Solo `medico` y `paciente` pueden entrar; `admin` queda afuera.
+  - **Línea 422** — Convierte el id de la URL a entero.
+  - **Línea 423** — `contextoDesdePayload()` resuelve los vínculos reales desde la tabla
+    `usuarios`; el JWT no guarda `id_paciente`.
+  - **Líneas 425-430** — Si el rol es `paciente`, compara el `id_paciente` del token/BD con
+    el id solicitado. Si la cuenta no tiene ficha (`<= 0`) o pide otro paciente, responde
+    `403` con "No tenés permisos para ver esas prescripciones". `Response::error()` corta la
+    ejecución, así que no se llega al controlador.
+  - **Líneas 432-438** — Si pasó la autorización, crea el controlador y llama a
+    `indexPorPaciente($idSolicitado)`.
+- **Líneas 441-454** — `GET /api/prescripciones/{id}`. Se agregó
+  `requireRol($payload, ['medico'])`: ver una receta puntual tiene el mismo alcance que el
+  listado. El catch mantiene el `500` uniforme.
+- **Líneas 456-472** — `POST /api/prescripciones`. Ya exigía rol médico; se mantiene igual:
+  ni admin ni paciente pueden recetar.
+- **Líneas 474-489** — `PUT /api/prescripciones/{id}`. Ya exigía rol médico; se mantiene.
+- **Líneas 491-504** — `PATCH /api/prescripciones/{id}`. Misma regla que `PUT`.
+- **Líneas 506-519** — `PATCH /api/prescripciones/{id}/estado`. Antes solo pedía token;
+  ahora `requireRol($payload, ['medico'])` impide que un paciente o un admin cambien el
+  estado clínico de una receta.
+- **Líneas 521-535** — `DELETE /api/prescripciones/{id}`. Sin cambios: sigue siendo
+  `requireRol($payload, ['admin'])`.
+
+La ruta `/paciente/{id_paciente}` está registrada **antes** de `/{id}` a propósito: si el
+router evaluara primero la ruta genérica, la palabra `paciente` podría interpretarse como un
+id y la petición terminaría en `show()` en lugar de `indexPorPaciente()`.
+
+### Capas que completan la ruta nueva
+
+- **`controllers/PrescripcionController.php`, líneas 41-45** — `indexPorPaciente()` recibe
+  el id ya validado y responde con `Response::ok($this->service->obtenerPorPaciente(...))`.
+  No vuelve a autorizar: la decisión de acceso quedó en `routes.php`, antes de la capa HTTP.
+- **`services/PrescripcionService.php`, líneas 84-88** — `obtenerPorPaciente()` delega en el
+  repositorio. No hay reglas adicionales que aplicar: el filtro por paciente es la consulta.
+- **`persistence/PrescripcionRepository.php`, líneas 157-177** — `obtenerPorPaciente()` usa
+  una consulta preparada con `WHERE p.id_paciente = ?`, `LEFT JOIN` con pacientes/médicos
+  para devolver `nombre_paciente` y `nombre_medico`, y ordena por `fecha_emision DESC`.
+  `formatearFila()` convierte el JSON de `medicamentos` en un array antes de responder.
+- **`services/AuthService.php`, líneas 631-644** — `contextoDesdePayload()` resuelve el
+  usuario por `sub` y devuelve `rol`, `id_usuario`, `id_paciente` e `id_medico`. El rol sale
+  del token firmado y los vínculos salen de la base: no se confía en un id enviado por el
+  cliente.
+- **`core/Response.php`, líneas 24-33 y 43-53** — Todas las respuestas mantienen el sobre
+  `{ ok, mensaje, data }` o `{ ok, mensaje, errores }`. El `403` de la ruta nueva también
+  usa ese formato.
+
+### Verificación ejecutada
+
+- `php -l routes.php`: sin errores de sintaxis.
+- `php tests/run.php`: **50/50** pruebas OK (correlación, JWT, logger, rate limiter y
+  validador).
+- E2E por HTTP con datos de prueba y sesiones QA firmadas:
+  - agenda del médico usuario `6` (`id_medico = 12`): `GET /api/citas/agenda` → `200`;
+  - slot `2026-11-09 08:00` consultado como libre;
+  - receta id `23` creada por el médico → `201`;
+  - paciente usuario `57` (`id_paciente = 337`) → `GET /api/prescripciones/paciente/337`
+    → `200`, receta `23` visible con estado `activa`;
+  - paciente usuario `60` (`id_paciente = 338`) → mismo endpoint con `337` → `403`;
+  - médico → `GET /api/prescripciones/paciente/337` → `200`;
+  - admin → mismo endpoint → `403`;
+  - paciente `337` reservó la cita `12` en el slot → `201`;
+  - paciente `338` intentó el mismo slot → `409`;
+  - limpieza de la cita y de la receta → `200` en ambos DELETE.
+- Secuencias y conteos restaurados: `citas = 11`, `prescripciones = 22`,
+  `eventos_realtime = 137`; totales finales `citas = 5`, `prescripciones = 3`,
+  `usuarios = 23`. No se crearon usuarios nuevos y no quedaron datos de prueba.
+- No se agregó una suite específica para este endpoint; la cobertura de esta iteración es el
+  E2E HTTP anterior. Los comandos existentes (`php tests/run.php`, `probar_roles.php`, etc.)
+  siguen disponibles para la regresión general.
 
 ## Publicar cambios en GitHub (paso a paso)
 
