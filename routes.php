@@ -401,8 +401,10 @@ $router->delete('/api/pacientes/{id}', function ($id) use ($pacienteService, $au
 
 // GET /api/prescripciones - Listar prescripciones (protegida: dato clínico)
 $router->get('/api/prescripciones', function () use ($prescripcionService, $authMiddleware) {
-    // Dato sensible (salud): solo accesible con token válido
-    $authMiddleware->verificarToken();
+    // Dato clínico: la pantalla de prescripciones es de uso exclusivo médico.
+    // No alcanza con tener sesión: un paciente o un admin reciben 403.
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['medico']);
     try {
         $controller = new PrescripcionController($prescripcionService);
         // index() lista todas las prescripciones (decodificando el JSON de medicamentos)
@@ -413,10 +415,34 @@ $router->get('/api/prescripciones', function () use ($prescripcionService, $auth
     }
 });
 
+$router->get('/api/prescripciones/paciente/{id_paciente}', function ($id_paciente) use ($prescripcionService, $authMiddleware, $authService) {
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['medico', 'paciente']);
+
+    $idSolicitado = (int) $id_paciente;
+    $contexto = $authService->contextoDesdePayload($payload);
+
+    if ($contexto['rol'] === 'paciente') {
+        $idPropio = (int) ($contexto['id_paciente'] ?? 0);
+        if ($idPropio <= 0 || $idPropio !== $idSolicitado) {
+            Response::error('No tenés permisos para ver esas prescripciones', 403);
+        }
+    }
+
+    try {
+        $controller = new PrescripcionController($prescripcionService);
+        $controller->indexPorPaciente($idSolicitado);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+});
+
 // GET /api/prescripciones/{id} - Ver una prescripción (protegida)
 $router->get('/api/prescripciones/{id}', function ($id) use ($prescripcionService, $authMiddleware) {
-    // Exige token antes de exponer el dato clínico de la prescripción
-    $authMiddleware->verificarToken();
+    // Mismo alcance que el listado: ver una receta puntual también es médico.
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['medico']);
     try {
         $controller = new PrescripcionController($prescripcionService);
         // show() devuelve la prescripción con el id indicado
@@ -479,8 +505,9 @@ $router->patch('/api/prescripciones/{id}', function ($id) use ($prescripcionServ
 
 // PATCH /api/prescripciones/{id}/estado - Cambiar estado (protegida)
 $router->patch('/api/prescripciones/{id}/estado', function ($id) use ($prescripcionService, $authMiddleware) {
-    // Ruta protegida: primero token válido
-    $authMiddleware->verificarToken();
+    // Cambiar el estado de una receta es una operación clínica: solo médico.
+    $payload = $authMiddleware->verificarToken();
+    $authMiddleware->requireRol($payload, ['medico']);
     try {
         $controller = new PrescripcionController($prescripcionService);
         // cambiarEstado() actualiza el campo estado (activa, vencida, dispensada...) de la prescripción
