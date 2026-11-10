@@ -1,0 +1,17 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" role="img" aria-labelledby="title desc">
+  <title id="title">SaludWEB PRO</title>
+  <desc id="desc">Logo de SaludWEB con distintivo PRO y subtítulo Sistema de Gestión de Salud sobre fondo degradado.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5a6fd0"/>
+      <stop offset="100%" stop-color="#764ba2"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="260" rx="28" fill="url(#bg)"/>
+  <g font-family="Inter, 'Segoe UI', Arial, Helvetica, sans-serif">
+    <text x="174" y="126" font-size="86" font-weight="700" textLength="410" lengthAdjust="spacingAndGlyphs" fill="#ffffff">SaludWEB</text>
+    <rect x="608" y="70" width="118" height="52" rx="26" fill="rgba(255,255,255,0.22)"/>
+    <text x="667" y="106" text-anchor="middle" font-size="30" font-weight="700" letter-spacing="2" fill="#ffffff">PRO</text>
+    <text x="450" y="184" text-anchor="middle" font-size="32" font-weight="500" fill="rgba(255,255,255,0.95)">Sistema de Gestión de Salud</text>
+  </g>
+</svg>

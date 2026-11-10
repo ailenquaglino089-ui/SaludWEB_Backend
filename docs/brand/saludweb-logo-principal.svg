@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" role="img" aria-labelledby="title desc">
+  <title id="title">Logo SaludWEB PRO</title>
+  <desc id="desc">Logo horizontal de SaludWEB con isotipo médico, distintivo PRO y subtítulo Sistema de Gestión de Salud.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5a6fd0"/>
+      <stop offset="100%" stop-color="#764ba2"/>
+    </linearGradient>
+    <linearGradient id="marca" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#5a6fd0"/>
+      <stop offset="100%" stop-color="#764ba2"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(20 0)">
+    <!-- Isotipo: signo más médico centrado -->
+    <rect x="64" y="110" width="180" height="180" rx="46" fill="url(#bg)"/>
+    <rect x="140" y="154" width="28" height="92" rx="14" fill="#ffffff"/>
+    <rect x="108" y="186" width="92" height="28" rx="14" fill="#ffffff"/>
+
+    <!-- Marca -->
+    <g font-family="Inter, 'Segoe UI', Arial, Helvetica, sans-serif">
+      <text x="292" y="200" font-size="100" font-weight="700" textLength="260" lengthAdjust="spacingAndGlyphs" fill="#30364f">Salud</text>
+      <text x="560" y="200" font-size="100" font-weight="700" textLength="217" lengthAdjust="spacingAndGlyphs" fill="url(#marca)">WEB</text>
+      <rect x="792" y="140" width="106" height="46" rx="23" fill="#e0e7ff"/>
+      <text x="845" y="172" text-anchor="middle" font-size="26" font-weight="700" letter-spacing="2" fill="#4338ca">PRO</text>
+      <text x="284" y="270" font-size="27" font-weight="600" letter-spacing="4.2" fill="#5f6475">SISTEMA DE GESTIÓN DE SALUD</text>
+    </g>
+  </g>
+</svg>

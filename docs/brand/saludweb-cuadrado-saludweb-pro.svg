@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" role="img" aria-labelledby="title desc">
+  <title id="title">SaludWEB PRO</title>
+  <desc id="desc">Versión cuadrada del logo SaludWEB con signo más médico y la marca SaludWEB PRO.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5a6fd0"/>
+      <stop offset="100%" stop-color="#764ba2"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+
+  <g font-family="Inter, 'Segoe UI', Arial, Helvetica, sans-serif">
+    <!-- Signo más médico centrado -->
+    <rect x="502" y="220" width="76" height="260" rx="38" fill="#ffffff"/>
+    <rect x="410" y="312" width="260" height="76" rx="38" fill="#ffffff"/>
+
+    <!-- Marca -->
+    <text x="540" y="650" text-anchor="middle" font-size="112" font-weight="700" textLength="534" lengthAdjust="spacingAndGlyphs" fill="#ffffff">SaludWEB</text>
+
+    <rect x="474" y="690" width="132" height="52" rx="26" fill="rgba(255,255,255,0.22)"/>
+    <text x="540" y="727" text-anchor="middle" font-size="30" font-weight="700" letter-spacing="2" fill="#ffffff">PRO</text>
+
+    <text x="540" y="820" text-anchor="middle" font-size="28" font-weight="600" letter-spacing="5" fill="rgba(255,255,255,0.92)">SISTEMA DE GESTIÓN DE SALUD</text>
+  </g>
+</svg>
