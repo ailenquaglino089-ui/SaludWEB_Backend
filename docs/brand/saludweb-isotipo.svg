@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Isotipo SaludWEB</title>
+  <desc id="desc">Ícono cuadrado con degradado de marca y un signo más médico centrado.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5a6fd0"/>
+      <stop offset="100%" stop-color="#764ba2"/>
+    </linearGradient>
+  </defs>
+  <rect x="72" y="72" width="880" height="880" rx="220" fill="url(#bg)"/>
+  <rect x="464" y="352" width="96" height="320" rx="48" fill="#ffffff"/>
+  <rect x="352" y="464" width="320" height="96" rx="48" fill="#ffffff"/>
+</svg>

@@ -776,6 +776,86 @@ id y la petición terminaría en `show()` en lugar de `indexPorPaciente()`.
   E2E HTTP anterior. Los comandos existentes (`php tests/run.php`, `probar_roles.php`, etc.)
   siguen disponibles para la regresión general.
 
+## Revisión 10/11/2026: visibilidad de registro, vínculo y agenda; marca compartida
+
+No se modificó código del backend en esta iteración. Se revisó el recorrido completo de una
+cuenta nueva para responder qué puede ver el médico y se publicaron los SVG de la marca en
+`docs/brand/`. El resultado de la revisión es:
+
+- registrar una cuenta **no** crea una ficha de paciente;
+- el médico no puede listar cuentas porque `/api/usuarios` es solo para admin;
+- al vincular el DNI se crea o se reutiliza la ficha y recién ahí el paciente aparece en
+  `GET /api/pacientes`;
+- una reserva aparece en `GET /api/citas/agenda`, que el médico consulta filtrada por su
+  propio `id_medico`.
+
+### `services/AuthService.php`, línea por línea
+
+- **Líneas 45-67** — `registro()` valida email, nombre y contraseña. El email se normaliza
+  y la contraseña se hashea; no se guarda texto plano.
+- **Líneas 98-110** — La whitelist del alta pública acepta solo `paciente` y `medico`.
+  `admin` se rechaza con `422` para que nadie escale privilegios desde el registro.
+- **Líneas 113-142** — El vínculo se fuerza a `null`: `$idPaciente = null` y
+  `$idMedico = null`. El `INSERT` crea la cuenta en `usuarios`, no una ficha en `pacientes`.
+- **Líneas 734-760** — `vincularPaciente()` normaliza el DNI (quita puntos, guiones y
+  espacios) y busca una ficha existente comparando la columna normalizada con el valor
+  recibido. El DNI no se usa como id suelto: se busca la ficha real.
+- **Líneas 763-800** — Si la ficha no existe y la cuenta todavía no está vinculada, se crea
+  `pacientes(dni, nombre, id_obra_social, activo)` con obra social por defecto y se guarda
+  `usuarios.id_paciente`. La creación y el vínculo ocurren en la misma operación lógica.
+- **Líneas 803-843** — Si la ficha existe, se exige que esté activa, que el nombre de la
+  cuenta coincida con el de la ficha y que ninguna otra cuenta la esté usando. Después se
+  actualiza `usuarios.id_paciente`; una ficha no se comparte entre cuentas.
+
+### `routes.php`, línea por línea
+
+- **Líneas 168-189** — `GET /api/pacientes` exige JWT con `verificarToken()`, pero no exige
+  rol admin. Lo usan el médico como selector de prescripciones y el admin en la gestión.
+- **Líneas 861-864** — `GET /api/usuarios` sí exige `requireRol($payload, ['admin'])`. Por
+  eso el médico no puede ver el alta de una cuenta desde el listado de usuarios.
+- **Líneas 614-630** — `GET /api/citas/agenda` exige token y devuelve la agenda con datos
+  completos del turno. No es pública: la disponibilidad pública solo informa libre/ocupado.
+- **Líneas 662-669** — `GET /api/citas` exige token. El controlador decide el alcance por
+  rol: el paciente ve solo sus citas; el médico, su propia agenda.
+
+### `controllers/AuthController.php` y `CitaController.php`, línea por línea
+
+- **`AuthController.php`, líneas 257-282** — `vincular()` exige sesión, lee `tipo` y
+  `documento`, llama a `vincularEntidad()` con el id del usuario autenticado y devuelve la
+  cuenta actualizada. No acepta un `id_paciente` arbitrario del cliente.
+- **`CitaController.php`, líneas 83-97** — `agenda()` resuelve el contexto desde el token y
+  responde `403` si el rol es `paciente`: la agenda completa no es para pacientes.
+- **Líneas 99-118** — Si el rol es `medico`, compara el `id_medico` pedido contra el
+  `id_medico` del token. Si no coincide, responde `403`; un médico no puede abrir la agenda
+  de otro profesional cambiando la URL.
+- **Líneas 120-133** — Si no se envía rango, usa la semana actual y responde con
+  `obtenerAgendaMedico($idMedico, $desde, $hasta)`. Ese es el endpoint que la UI Web/Mobile
+  todavía no expone como pantalla para el médico.
+
+### `docs/brand/`, línea por línea
+
+- **`saludweb-logo-principal.svg`, líneas 1-3** — SVG de 1000 × 400 con título y
+  descripción accesibles.
+- **Líneas 4-13** — Degradados de marca `#5a6fd0` → `#764ba2`.
+- **Líneas 15-19** — Isotipo cuadrado con signo más blanco centrado.
+- **Líneas 22-27** — “Salud”, “WEB”, píldora “PRO” y subtítulo “SISTEMA DE GESTIÓN DE SALUD”.
+- **`saludweb-isotipo.svg`, líneas 10-12** — Fondo redondeado y brazos del signo más.
+- **`saludweb-cuadrado-saludweb-pro.svg`, líneas 11-24** — Versión 1:1 con fondo degradado,
+  signo más, “SaludWEB”, “PRO” y subtítulo.
+- **`saludweb-horizontal-gradiente.svg`, líneas 10-15** — Banner degradado con la marca y
+  subtítulo.
+- **`saludweb-horizontal-claro.svg` y `-blanco.svg`, líneas 4-8** — Versiones sin fondo para
+  fondos claros y oscuros, respectivamente.
+
+### Verificación ejecutada
+
+- `php -l` sobre los archivos revisados: sin errores de sintaxis.
+- `php tests/run.php`: **50/50** pruebas OK.
+- Se validaron los siete SVG como XML y se comprobó que los centros de los signos más son
+  blancos y que los degradados conservan los extremos de marca.
+- No se modificaron la base, los permisos ni las rutas; la revisión es de comportamiento y
+  documentación.
+
 ## Publicar cambios en GitHub (paso a paso)
 
 Este repositorio se publica en
