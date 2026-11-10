@@ -779,8 +779,8 @@ id y la petición terminaría en `show()` en lugar de `indexPorPaciente()`.
 ## Revisión 10/11/2026: visibilidad de registro, vínculo y agenda; marca compartida
 
 No se modificó código del backend en esta iteración. Se revisó el recorrido completo de una
-cuenta nueva para responder qué puede ver el médico y se publicaron los SVG de la marca en
-`docs/brand/`. El resultado de la revisión es:
+cuenta nueva para responder qué puede ver el médico y se publicaron los SVG y PNG de la
+marca en `docs/brand/`. El resultado de la revisión es:
 
 - registrar una cuenta **no** crea una ficha de paciente;
 - el médico no puede listar cuentas porque `/api/usuarios` es solo para admin;
@@ -851,6 +851,7 @@ cuenta nueva para responder qué puede ver el médico y se publicaron los SVG de
 
 - `php -l` sobre los archivos revisados: sin errores de sintaxis.
 - `php tests/run.php`: **50/50** pruebas OK.
+- Los 14 assets (7 SVG y 7 PNG) quedaron en `docs/brand/`, junto con su README.
 - Se validaron los siete SVG como XML y se comprobó que los centros de los signos más son
   blancos y que los degradados conservan los extremos de marca.
 - No se modificaron la base, los permisos ni las rutas; la revisión es de comportamiento y
