@@ -4,6 +4,20 @@ Paquete de logo basado en la identidad visual existente de SaludWEB: tipografía
 
 ![Logo principal](saludweb-logo-principal.svg)
 
+## Uso en la HOME web (13/11/2026)
+
+La HOME de `SaludWEB_Web` usa este paquete de marca de la siguiente manera:
+
+- `saludweb-logo-principal-blanco.svg`: logo principal del flyer, centrado arriba y
+  sobre el fondo azul oscuro.
+- `saludweb-isotipo.svg`: cierre de la página, dentro del bloque de llamada a la acción.
+- `saludweb-logo-principal.svg`: referencia para fondos claros y para las demás pantallas.
+
+La persona con anteojos y el robot con laptop del flyer **no forman parte de este
+paquete**: son SVG inline dentro de `src/components/Home/Home.jsx`. Si más adelante se
+consigue la imagen original del flyer, se pueden reemplazar esos dos componentes sin
+tocar el resto de la HOME.
+
 ## Archivos principales
 
 | Archivo | Uso recomendado |
