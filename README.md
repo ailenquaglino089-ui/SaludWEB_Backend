@@ -26,6 +26,16 @@ agenda del médico y después lo canceló para dejar la base limpia.
 El detalle de la implementación y las capturas está en
 [`SaludWEB_Web/README.md`](https://github.com/ailenquaglino089-ui/SaludWEB_Web/blob/main/README.md).
 
+## Publicación de esta iteración
+
+- **PR #53** (`docs/access-connectivity` → `main`): documenta la iteración web. Este
+  repositorio no cambia código, migraciones ni endpoints.
+- La parte funcional se publica desde el **PR #68** de `SaludWEB_Web`: HOME estilo
+  flyer, agenda del médico, enlaces de vuelta y ajustes visuales finales.
+- `main` está protegida: se publica por pull request, no con `git push origin main`.
+- Demo pública: <https://saludweb.taileeeb72.ts.net/>; la API sigue resolviendo
+  `/api/...` por el mismo origen.
+
 ## Qué hacemos acá (visión general)
 
 - **API REST** en PHP puro con arquitectura en capas
