@@ -4,6 +4,38 @@ Capa de **API y lógica de acceso a datos** del proyecto **SaludWEB** (Programac
 Expone únicamente endpoints **JSON**, desacoplado por completo del frontend (la SPA web y
 la app móvil consumen esta misma API).
 
+## Iteración web 13/11/2026 (sin cambios de API)
+
+La HOME estilo flyer y la agenda del médico se implementaron **solo en la SPA web**.
+Este repositorio no cambió: no hay migraciones, tablas nuevas ni endpoints nuevos que
+ejecutar para esta iteración.
+
+La web reutiliza estos contratos existentes:
+
+- `GET /api/turnos?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&porPagina=100` con JWT. El backend
+  sigue aplicando el alcance por rol: un médico recibe sus propios turnos y un paciente
+  no puede pedir la agenda completa.
+- `GET /api/estadisticas` para el resumen del dashboard.
+- `GET /api/auth/me` para saber el rol y el vínculo de la cuenta.
+
+Por eso la pantalla **Mi agenda** no necesita un endpoint especial: llama a
+`/api/turnos` con un rango de 30 días y muestra fecha, hora, paciente, DNI, especialidad
+y estado. La prueba de circuito completa reservó un turno desde la web, lo mostró en la
+agenda del médico y después lo canceló para dejar la base limpia.
+
+El detalle de la implementación y las capturas está en
+[`SaludWEB_Web/README.md`](https://github.com/ailenquaglino089-ui/SaludWEB_Web/blob/main/README.md).
+
+## Publicación de esta iteración
+
+- **PR #53** (`docs/access-connectivity` → `main`): documenta la iteración web. Este
+  repositorio no cambia código, migraciones ni endpoints.
+- La parte funcional se publica desde el **PR #68** de `SaludWEB_Web`: HOME estilo
+  flyer, agenda del médico, enlaces de vuelta y ajustes visuales finales.
+- `main` está protegida: se publica por pull request, no con `git push origin main`.
+- Demo pública: <https://saludweb.taileeeb72.ts.net/>; la API sigue resolviendo
+  `/api/...` por el mismo origen.
+
 ## Qué hacemos acá (visión general)
 
 - **API REST** en PHP puro con arquitectura en capas
